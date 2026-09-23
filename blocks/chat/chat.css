@@ -1,0 +1,7 @@
+.chat {
+    color: blue;
+    border: 1px solid red;
+    display: block;
+    padding: 50px;
+    margin: 20px;
+}
