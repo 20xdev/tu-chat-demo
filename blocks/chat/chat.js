@@ -33,16 +33,53 @@ export default function decorate(block) {
     message.textContent = text;
     messages.append(message);
     messages.scrollTop = messages.scrollHeight;
+    return message;
   }
 
-  function send() {
+  function appendChunk(message, data) {
+    if (data === '[DONE]') return true;
+    const { text } = JSON.parse(data);
+    message.textContent += text;
+    messages.scrollTop = messages.scrollHeight;
+    return false;
+  }
+
+  async function reply(userInput, message) {
+    const res = await fetch('https://tu-chat-server.vercel.app/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ messages: [{ role: 'user', text: userInput }] }),
+    });
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let done = false;
+    while (!done) {
+      // eslint-disable-next-line no-await-in-loop
+      const chunk = await reader.read();
+      done = chunk.done;
+      buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
+      const lines = buffer.split('\n');
+      buffer = lines.pop();
+      lines
+        .filter((line) => line.startsWith('data:'))
+        .map((line) => line.slice(5).trim())
+        .some((data) => appendChunk(message, data));
+    }
+  }
+
+  async function send() {
     const text = field.value.trim();
     if (!text) return;
     addMessage(text, 'sent');
     field.value = '';
     field.style.height = 'auto';
-    // simulate a received reply until a real backend is wired up
-    setTimeout(() => addMessage(`You said: "${text}"`, 'received'), 600);
+    const message = addMessage('', 'received');
+    try {
+      await reply(text, message);
+    } catch {
+      message.textContent = 'Something went wrong. Please try again.';
+    }
   }
 
   form.addEventListener('submit', (event) => {
