@@ -13,15 +13,17 @@
 :root {
   /* colors */
   --background-color: white;
-  --light-color: #f8f8f8;
+  --light-color: #f3f3f3;
   --dark-color: #505050;
-  --text-color: #131313;
-  --link-color: #3b63fb;
-  --link-hover-color: #1d3ecf;
+  --text-color: #333;
+  --link-color: #0e893c;
+  --link-hover-color: #0a6e30;
+  --brand-color: #0e893c;
+  --brand-hover-color: #0a6e30;
 
   /* fonts */
-  --body-font-family: roboto, roboto-fallback, sans-serif;
-  --heading-font-family: roboto-condensed, roboto-condensed-fallback, sans-serif;
+  --body-font-family: 'open sans', 'open-sans-fallback', sans-serif;
+  --heading-font-family: 'open sans', 'open-sans-fallback', sans-serif;
 
   /* body sizes */
   --body-font-size-m: 22px;
@@ -41,6 +43,12 @@
 }
 
 /* fallback fonts */
+@font-face {
+  font-family: open-sans-fallback;
+  size-adjust: 106%;
+  src: local('Arial');
+}
+
 @font-face {
   font-family: roboto-condensed-fallback;
   size-adjust: 88.82%;

@@ -4,6 +4,7 @@ header .nav-wrapper {
   width: 100%;
   z-index: 2;
   position: fixed;
+  border-bottom: 1px solid #e6e6e6;
 }
 
 header nav {
@@ -38,8 +39,9 @@ header nav[aria-expanded='true'] {
   header nav {
     display: flex;
     justify-content: space-between;
-    gap: 0 32px;
+    gap: 0 48px;
     max-width: 1264px;
+    height: 80px;
     padding: 0 32px;
   }
 
@@ -174,7 +176,7 @@ header nav .nav-sections ul {
 }
 
 header nav .nav-sections ul > li {
-  font-weight: 500;
+  font-weight: 700;
 }
 
 header nav .nav-sections ul > li > ul {
@@ -206,26 +208,25 @@ header nav .nav-sections ul > li > ul > li {
     content: '';
     display: inline-block;
     position: absolute;
-    top: 0.5em;
-    right: 2px;
-    transform: rotate(135deg);
-    width: 6px;
-    height: 6px;
-    border: 2px solid currentcolor;
-    border-radius: 0 1px 0 0;
-    border-width: 2px 2px 0 0;
+    top: 50%;
+    right: 0;
+    transform: translateY(-25%);
+    width: 0;
+    height: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-top: 6px solid currentcolor;
   }
 
   header nav .nav-sections .nav-drop[aria-expanded='true']::after {
-    top: unset;
-    bottom: 0.5em;
-    transform: rotate(315deg);
+    transform: translateY(-75%) rotate(180deg);
   }
 
   header nav .nav-sections ul {
     display: flex;
-    gap: 24px;
+    gap: 44px;
     margin: 0;
+    font-size: var(--body-font-size-m);
   }
 
   header nav .nav-sections .default-content-wrapper > ul > li {
@@ -269,4 +270,42 @@ header nav .nav-sections ul > li > ul > li {
 /* tools */
 header nav .nav-tools {
   grid-area: tools;
+  font-weight: 400;
+}
+
+header nav .nav-tools .default-content-wrapper {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 24px;
+}
+
+header nav .nav-tools .icon-search {
+  display: inline-block;
+  width: 24px;
+  height: 24px;
+}
+
+header nav .nav-tools .icon-search img {
+  width: 24px;
+  height: 24px;
+}
+
+header nav .nav-tools a:any-link {
+  text-decoration: none;
+}
+
+/* "Log in" rendered as a filled green button */
+header nav .nav-tools .default-content-wrapper > p:last-child a:any-link {
+  display: inline-block;
+  padding: 12px 24px;
+  border-radius: 4px;
+  background-color: var(--brand-color);
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+}
+
+header nav .nav-tools .default-content-wrapper > p:last-child a:hover {
+  background-color: var(--brand-hover-color);
 }
