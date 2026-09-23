@@ -3,7 +3,7 @@
   flex-direction: column;
   height: 600px;
   max-width: 768px;
-  margin: 20px auto;
+  margin: 64px auto 20px;
   padding: 16px;
   border: 1px solid #e0e0e0;
   border-radius: 16px;
@@ -40,9 +40,9 @@
   max-width: 85%;
   padding: 14px 18px;
   border-radius: 4px 18px 18px;
-  color: #3c4043;
-  background-color: #f7f9fc;
-  border: 1px solid #eceff3;
+  color: #0f5c2a;
+  background-color: #eaf5ee;
+  border: 1px solid #c7e6d3;
 }
 
 .chat .chat-input {
