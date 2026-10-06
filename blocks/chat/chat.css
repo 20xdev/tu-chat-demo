@@ -127,10 +127,118 @@
 
 .chat .chat-message-received {
   align-self: flex-start;
+  box-sizing: border-box;
+  min-width: 0;
   max-width: 85%;
   padding: 14px 18px;
   border-left: 3px solid var(--chat-green);
   background-color: #f1f8f3;
+  white-space: normal;
+}
+
+.chat .chat-message-received > :first-child {
+  margin-top: 0;
+}
+
+.chat .chat-message-received > :last-child {
+  margin-bottom: 0;
+}
+
+.chat .chat-message-received p,
+.chat .chat-message-received ul,
+.chat .chat-message-received ol {
+  margin: 0 0 12px;
+}
+
+.chat .chat-message-received :is(h1, h2, h3, h4, h5, h6) {
+  margin: 18px 0 8px;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.4;
+  letter-spacing: 0;
+}
+
+.chat .chat-message-received :is(ul, ol) {
+  padding-left: 24px;
+}
+
+.chat .chat-message-received li + li {
+  margin-top: 6px;
+}
+
+.chat .chat-message-received li > :is(ul, ol) {
+  margin: 6px 0 0;
+}
+
+.chat .chat-message-received a {
+  color: var(--brand-hover-color, #0a6e30);
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.chat .chat-message-received a:focus-visible {
+  outline: 2px solid var(--chat-green);
+  outline-offset: 3px;
+}
+
+.chat .chat-message-received blockquote {
+  margin: 12px 0;
+  padding: 4px 0 4px 14px;
+  border-left: 2px solid #a5cbb1;
+  color: #49594e;
+}
+
+.chat .chat-message-received blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+.chat .chat-message-received code {
+  padding: 2px 5px;
+  border-radius: 3px;
+  background: #e2ede6;
+  font-size: 13px;
+}
+
+.chat .chat-message-received pre {
+  max-width: 100%;
+  margin: 12px 0;
+  padding: 12px;
+  overflow-x: auto;
+  border: 1px solid #d5dfd9;
+  border-radius: 4px;
+  background: #fff;
+  white-space: pre;
+}
+
+.chat .chat-message-received pre code {
+  padding: 0;
+  background: transparent;
+}
+
+.chat .chat-message-received table {
+  display: block;
+  max-width: 100%;
+  margin: 12px 0;
+  overflow-x: auto;
+  border-collapse: collapse;
+  font-size: 14px;
+}
+
+.chat .chat-message-received :is(th, td) {
+  padding: 8px 12px;
+  border: 1px solid #d5dfd9;
+  text-align: left;
+}
+
+.chat .chat-message-received th {
+  background: #e2ede6;
+}
+
+.chat .chat-message-received hr {
+  margin: 16px 0;
+  border: 0;
+  border-top: 1px solid #d5dfd9;
 }
 
 .chat .chat-message-loading {

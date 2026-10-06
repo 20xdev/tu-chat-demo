@@ -63,6 +63,9 @@ export default function decorate(block) {
   form.append(field, sendButton);
   block.append(header, welcome, messages, form, notice);
   let pending = false;
+  let markdownLibraries;
+  let renderMarkdown;
+  let responseText = '';
 
   function addMessage(text, type) {
     const message = document.createElement('div');
@@ -81,12 +84,37 @@ export default function decorate(block) {
       message.textContent = '';
       message.classList.remove('chat-message-loading');
     }
-    message.textContent += text;
+    responseText += text;
+    message.innerHTML = renderMarkdown(responseText);
+    message.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    });
     messages.scrollTop = messages.scrollHeight;
     return false;
   }
 
   async function reply(userInput, message) {
+    if (!markdownLibraries) {
+      const markdownURL = 'https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.esm.js';
+      const sanitizerURL = 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs';
+      markdownLibraries = Promise.all([import(markdownURL), import(sanitizerURL)])
+        .catch((error) => {
+          markdownLibraries = undefined;
+          throw error;
+        });
+    }
+    const [{ marked }, { default: DOMPurify }] = await markdownLibraries;
+    renderMarkdown = (text) => DOMPurify.sanitize(marked.parse(text, { breaks: true }), {
+      ALLOWED_TAGS: [
+        'p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li',
+        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr',
+        'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+      ],
+      ALLOWED_ATTR: ['href', 'title', 'start'],
+      ALLOW_DATA_ATTR: false,
+      ALLOW_ARIA_ATTR: false,
+    });
     const res = await fetch('https://tu-chat-server.vercel.app/chat', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -125,6 +153,7 @@ export default function decorate(block) {
 
   async function respond(text, message) {
     pending = true;
+    responseText = '';
     sendButton.disabled = true;
     message.textContent = 'Thinking...';
     message.classList.add('chat-message-loading');
