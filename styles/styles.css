@@ -13,9 +13,9 @@
 :root {
   /* colors */
   --background-color: white;
-  --light-color: #f3f3f3;
+  --light-color: #f2f8f4;
   --dark-color: #505050;
-  --text-color: #333;
+  --text-color: #252b2d;
   --link-color: #0e893c;
   --link-hover-color: #0a6e30;
   --brand-color: #0e893c;
@@ -26,17 +26,17 @@
   --heading-font-family: 'open sans', 'open-sans-fallback', sans-serif;
 
   /* body sizes */
-  --body-font-size-m: 22px;
-  --body-font-size-s: 19px;
-  --body-font-size-xs: 17px;
+  --body-font-size-m: 16px;
+  --body-font-size-s: 14px;
+  --body-font-size-xs: 12px;
 
   /* heading sizes */
-  --heading-font-size-xxl: 55px;
-  --heading-font-size-xl: 44px;
-  --heading-font-size-l: 34px;
-  --heading-font-size-m: 27px;
-  --heading-font-size-s: 24px;
-  --heading-font-size-xs: 22px;
+  --heading-font-size-xxl: 32px;
+  --heading-font-size-xl: 24px;
+  --heading-font-size-l: 21px;
+  --heading-font-size-m: 19px;
+  --heading-font-size-s: 17px;
+  --heading-font-size-xs: 16px;
 
   /* nav height */
   --nav-height: 64px;
@@ -64,17 +64,18 @@
 @media (width >= 900px) {
   :root {
     /* body sizes */
-    --body-font-size-m: 18px;
+    --body-font-size-m: 17px;
     --body-font-size-s: 16px;
     --body-font-size-xs: 14px;
 
     /* heading sizes */
-    --heading-font-size-xxl: 45px;
-    --heading-font-size-xl: 36px;
-    --heading-font-size-l: 28px;
+    --heading-font-size-xxl: 40px;
+    --heading-font-size-xl: 28px;
+    --heading-font-size-l: 24px;
     --heading-font-size-m: 22px;
     --heading-font-size-s: 20px;
     --heading-font-size-xs: 18px;
+    --nav-height: 80px;
   }
 }
 
@@ -129,7 +130,7 @@ h6 {
   font-family: var(--heading-font-family);
   font-weight: 600;
   line-height: 1.25;
-  scroll-margin: 40px;
+  scroll-margin: calc(var(--nav-height) + 24px);
 }
 
 h1 { font-size: var(--heading-font-size-xxl); }
@@ -199,16 +200,17 @@ button.button {
   max-width: 100%;
   margin: 0;
   border: 2px solid transparent;
-  border-radius: 2.4em;
+  border-radius: 4px;
   padding: 0.5em 1.2em;
   font: inherit;
-  font-weight: 500;
+  font-weight: 600;
   line-height: 1.25;
   text-decoration: none;
   cursor: pointer;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
+  text-align: center;
 }
 
 a.button[aria-disabled="true"],
@@ -219,8 +221,8 @@ button.button:disabled {
 
 a.button.primary,
 button.button.primary {
-  border-color: var(--text-color);
-  background-color: var(--text-color);
+  border-color: var(--brand-color);
+  background-color: var(--brand-color);
   color: var(--background-color);
 }
 
@@ -228,8 +230,8 @@ a.button.primary:hover,
 a.button.primary:focus-visible,
 button.button.primary:hover,
 button.button.primary:focus-visible {
-  border-color: var(--dark-color);
-  background-color: var(--dark-color);
+  border-color: var(--brand-hover-color);
+  background-color: var(--brand-hover-color);
   color: var(--light-color);
 }
 
@@ -333,6 +335,80 @@ main > .section:first-of-type {
 @media (width >= 900px) {
   main > .section > div {
     padding: 0 32px;
+  }
+}
+
+main > .section:has(> .default-content-wrapper):not(:has(.block)) {
+  margin: 0;
+  padding: 40px 0;
+  border-bottom: 1px solid #e4ebe6;
+}
+
+main > .section:has(> .default-content-wrapper):not(:has(.block)):first-of-type {
+  background: linear-gradient(135deg, var(--light-color), #fff 75%);
+}
+
+main > .section > .default-content-wrapper {
+  box-sizing: border-box;
+  max-width: 1040px;
+}
+
+main .default-content-wrapper > :first-child {
+  margin-top: 0;
+}
+
+main .default-content-wrapper > :last-child {
+  margin-bottom: 0;
+}
+
+main .default-content-wrapper :is(h1, h2, h3, h4, h5, h6) {
+  font-weight: 700;
+  letter-spacing: 0;
+  overflow-wrap: anywhere;
+}
+
+main .default-content-wrapper h1 {
+  margin-bottom: 20px;
+  padding-left: 16px;
+  border-left: 4px solid var(--brand-color);
+}
+
+main .default-content-wrapper h1 + p {
+  color: #57635c;
+  font-size: 18px;
+}
+
+main .default-content-wrapper :is(p, ul, ol) {
+  max-width: 70ch;
+  margin-bottom: 16px;
+}
+
+main .default-content-wrapper :is(ul, ol) {
+  padding-left: 24px;
+}
+
+main .default-content-wrapper li + li {
+  margin-top: 8px;
+}
+
+main .default-content-wrapper li::marker {
+  color: var(--brand-color);
+  font-weight: 700;
+}
+
+main .default-content-wrapper a:not(.button) {
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+@media (width >= 900px) {
+  main > .section:has(> .default-content-wrapper):not(:has(.block)) {
+    padding: 48px 0;
+  }
+
+  main .default-content-wrapper h1 + p {
+    font-size: 20px;
   }
 }
 
