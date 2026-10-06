@@ -4,10 +4,12 @@ import {
   decorateIcons,
   decorateSections,
   decorateBlocks,
+  decorateBlock,
   decorateTemplateAndTheme,
   waitForFirstImage,
   loadSection,
   loadSections,
+  loadBlock,
   loadCSS,
   buildBlock,
 } from './aem.js';
@@ -188,6 +190,15 @@ async function loadLazy(doc) {
 
   const main = doc.querySelector('main');
   await loadSections(main);
+
+  if (!doc.querySelector('.chat.block')) {
+    const chatWrapper = document.createElement('div');
+    const chat = buildBlock('chat', '');
+    chatWrapper.append(chat);
+    doc.body.append(chatWrapper);
+    decorateBlock(chat);
+    await loadBlock(chat);
+  }
 
   const { hash } = window.location;
   const element = hash ? doc.getElementById(hash.substring(1)) : false;

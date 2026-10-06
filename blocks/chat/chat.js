@@ -16,15 +16,47 @@ const content = {
 export default function decorate(block) {
   block.textContent = '';
 
+  const iconURL = 'https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/';
+  const launcher = document.createElement('button');
+  launcher.type = 'button';
+  launcher.className = 'chat-launcher';
+  launcher.setAttribute('aria-label', 'Open Linkt Assistant');
+  launcher.setAttribute('aria-haspopup', 'dialog');
+  launcher.setAttribute('aria-expanded', 'false');
+  launcher.title = 'Open Linkt Assistant';
+  const launcherIcon = document.createElement('img');
+  launcherIcon.src = `${iconURL}message-circle.svg`;
+  launcherIcon.alt = '';
+  launcher.append(launcherIcon);
+
+  const panel = document.createElement('dialog');
+  panel.className = 'chat-dialog';
+  panel.id = `chat-panel-${document.querySelectorAll('.chat-dialog').length + 1}`;
+  launcher.setAttribute('aria-controls', panel.id);
+
   const header = document.createElement('div');
   header.className = 'chat-header';
+  const identity = document.createElement('div');
+  identity.className = 'chat-identity';
   const title = document.createElement('p');
   title.className = 'chat-title';
+  title.id = `${panel.id}-title`;
   title.textContent = content.title;
+  panel.setAttribute('aria-labelledby', title.id);
   const label = document.createElement('span');
   label.className = 'chat-label';
   label.textContent = content.label;
-  header.append(title, label);
+  identity.append(title, label);
+  const closeButton = document.createElement('button');
+  closeButton.type = 'button';
+  closeButton.className = 'chat-close';
+  closeButton.setAttribute('aria-label', 'Close chat');
+  closeButton.title = 'Close chat';
+  const closeIcon = document.createElement('img');
+  closeIcon.src = `${iconURL}x.svg`;
+  closeIcon.alt = '';
+  closeButton.append(closeIcon);
+  header.append(identity, closeButton);
 
   const welcome = document.createElement('div');
   welcome.className = 'chat-welcome';
@@ -61,7 +93,37 @@ export default function decorate(block) {
   notice.className = 'chat-notice';
   notice.textContent = content.notice;
   form.append(field, sendButton);
-  block.append(header, welcome, messages, form, notice);
+  panel.append(header, welcome, messages, form, notice);
+  block.append(launcher, panel);
+  let previousOverflow;
+  function updateViewport() {
+    if (!panel.open || !window.visualViewport) return;
+    panel.style.setProperty('--chat-viewport-height', `${window.visualViewport.height}px`);
+    panel.style.setProperty('--chat-viewport-top', `${window.visualViewport.offsetTop}px`);
+  }
+  window.visualViewport?.addEventListener('resize', updateViewport);
+  window.visualViewport?.addEventListener('scroll', updateViewport);
+  launcher.addEventListener('click', () => {
+    previousOverflow = document.body.style.overflow;
+    panel.showModal();
+    updateViewport();
+    document.body.style.overflow = 'hidden';
+    launcher.setAttribute('aria-expanded', 'true');
+    messages.scrollTop = messages.scrollHeight;
+    closeButton.focus();
+  });
+  closeButton.addEventListener('click', () => panel.close());
+  panel.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      panel.close();
+    }
+  });
+  panel.addEventListener('close', () => {
+    document.body.style.overflow = previousOverflow;
+    launcher.setAttribute('aria-expanded', 'false');
+    launcher.focus();
+  });
   let pending = false;
   let markdownLibraries;
   let renderMarkdown;
