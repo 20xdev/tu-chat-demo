@@ -89,11 +89,23 @@ body {
 }
 
 body.appear {
-  display: block;
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+body > main {
+  flex: 1;
 }
 
 header {
   height: var(--nav-height);
+}
+
+body > header,
+body > footer {
+  flex-shrink: 0;
 }
 
 header .header,
@@ -321,6 +333,42 @@ main > .section:first-of-type {
 @media (width >= 900px) {
   main > .section > div {
     padding: 0 32px;
+  }
+}
+
+body > main:has(> .chat-container:only-child) {
+  display: flex;
+  flex: 1 0 636px;
+  flex-direction: column;
+  min-height: 636px;
+}
+
+body > main > .chat-container:only-child {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  height: 0;
+  min-height: 636px;
+  margin: 0;
+}
+
+body > main > .chat-container:only-child > .chat-wrapper {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: 0;
+  width: 100%;
+}
+
+@media (width < 600px) {
+  body > main:has(> .chat-container:only-child) {
+    flex-basis: 684px;
+    min-height: 684px;
+  }
+
+  body > main > .chat-container:only-child {
+    min-height: 684px;
   }
 }
 
