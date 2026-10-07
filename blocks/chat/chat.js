@@ -197,9 +197,17 @@ export default function decorate(block) {
       ALLOW_DATA_ATTR: false,
       ALLOW_ARIA_ATTR: false,
     });
+    const tokenCookie = document.cookie.split(';')
+      .map((cookie) => cookie.trim())
+      .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
+    const chatAccessToken = tokenCookie
+      ? decodeURIComponent(tokenCookie.slice('CHAT_ACCESS_TOKEN='.length)) : null;
     const res = await fetch('https://tu-chat-server.vercel.app/chat', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        CHAT_ACCESS_TOKEN: chatAccessToken,
+      },
       body: JSON.stringify({ messages: [{ role: 'user', text: userInput }] }),
     });
     if (!res.ok || !res.body) throw new Error('Chat request failed');
