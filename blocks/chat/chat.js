@@ -16,6 +16,7 @@ const content = {
 export default function decorate(block) {
   block.textContent = '';
 
+  const conversationId = crypto.randomUUID();
   const iconURL = 'https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/';
   const launcher = document.createElement('div');
   launcher.className = 'chat-launcher';
@@ -207,6 +208,7 @@ export default function decorate(block) {
       headers: {
         'Content-Type': 'application/json',
         CHAT_ACCESS_TOKEN: chatAccessToken,
+        conversationId,
       },
       body: JSON.stringify({ messages: [{ role: 'user', text: userInput }] }),
     });
