@@ -16,24 +16,33 @@ const content = {
 export default function decorate(block) {
   block.textContent = '';
 
-  const conversationId = crypto.randomUUID();
+  let conversationId = crypto.randomUUID();
   const iconURL = 'https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/';
   const launcher = document.createElement('div');
   launcher.className = 'chat-launcher';
-  const launcherField = document.createElement('input');
-  launcherField.type = 'text';
-  launcherField.readOnly = true;
-  launcherField.placeholder = content.placeholder;
+  const launcherField = document.createElement('button');
+  launcherField.type = 'button';
+  launcherField.className = 'chat-launcher-trigger';
+  const launcherTitle = document.createElement('strong');
+  launcherTitle.textContent = content.title;
+  const launcherPrompt = document.createElement('span');
+  launcherPrompt.textContent = content.placeholder;
+  launcherField.append(launcherTitle, launcherPrompt);
   launcherField.setAttribute('aria-label', 'Open Linkt Assistant');
   const expandButton = document.createElement('button');
   expandButton.type = 'button';
   expandButton.setAttribute('aria-label', 'Expand chat');
   expandButton.title = 'Expand chat';
   const launcherIcon = document.createElement('img');
+  launcherIcon.className = 'chat-launcher-icon';
   launcherIcon.src = `${iconURL}chevron-up.svg`;
   launcherIcon.alt = '';
   expandButton.append(launcherIcon);
-  launcher.append(launcherField, expandButton);
+  const launcherCar = document.createElement('img');
+  launcherCar.className = 'chat-launcher-car';
+  launcherCar.src = `${iconURL}car-front.svg`;
+  launcherCar.alt = '';
+  launcher.append(launcherCar, launcherField, expandButton);
 
   const panel = document.createElement('dialog');
   panel.className = 'chat-dialog';
@@ -66,7 +75,21 @@ export default function decorate(block) {
   closeIcon.src = `${iconURL}chevron-down.svg`;
   closeIcon.alt = '';
   closeButton.append(closeIcon);
-  header.append(identity, closeButton);
+  const avatar = document.createElement('img');
+  avatar.className = 'chat-avatar';
+  avatar.src = `${iconURL}car-front.svg`;
+  avatar.alt = '';
+  const resetButton = document.createElement('button');
+  resetButton.type = 'button';
+  resetButton.className = 'chat-reset';
+  resetButton.setAttribute('aria-label', 'New conversation');
+  resetButton.title = 'New conversation';
+  resetButton.disabled = true;
+  const resetIcon = document.createElement('img');
+  resetIcon.src = `${iconURL}square-pen.svg`;
+  resetIcon.alt = '';
+  resetButton.append(resetIcon);
+  header.append(avatar, identity, resetButton, closeButton);
 
   const welcome = document.createElement('div');
   welcome.className = 'chat-welcome';
@@ -98,6 +121,10 @@ export default function decorate(block) {
   sendButton.setAttribute('aria-label', 'Send');
   sendButton.title = 'Send';
   sendButton.disabled = true;
+  const sendIcon = document.createElement('img');
+  sendIcon.src = `${iconURL}arrow-up.svg`;
+  sendIcon.alt = '';
+  sendButton.append(sendIcon);
 
   const notice = document.createElement('p');
   notice.className = 'chat-notice';
@@ -131,17 +158,28 @@ export default function decorate(block) {
       openChat();
     }
   });
-  closeButton.addEventListener('click', () => panel.close());
+  async function closeChat() {
+    if (!panel.open || panel.classList.contains('chat-closing')) return;
+    panel.classList.add('chat-closing');
+    await Promise.all(panel.getAnimations().map((animation) => animation.finished.catch(() => {})));
+    panel.close();
+  }
+  closeButton.addEventListener('click', closeChat);
   panel.addEventListener('keydown', (event) => {
     if (event.key === 'Escape') {
       event.preventDefault();
-      panel.close();
+      closeChat();
     }
   });
+  panel.addEventListener('cancel', (event) => {
+    event.preventDefault();
+    closeChat();
+  });
   panel.addEventListener('close', () => {
+    panel.classList.remove('chat-closing');
     document.body.style.overflow = previousOverflow;
     launcher.hidden = false;
-    launcherField.value = field.value;
+    launcherPrompt.textContent = field.value.trim() || content.placeholder;
     [launcherField, expandButton].forEach((control) => control.setAttribute('aria-expanded', 'false'));
     launcherField.focus();
   });
@@ -150,6 +188,19 @@ export default function decorate(block) {
   let renderMarkdown;
   let responseText = '';
 
+  resetButton.addEventListener('click', () => {
+    if (pending) return;
+    conversationId = crypto.randomUUID();
+    messages.replaceChildren();
+    messages.hidden = true;
+    welcome.hidden = false;
+    field.value = '';
+    field.style.height = 'auto';
+    sendButton.disabled = true;
+    resetButton.disabled = true;
+    field.focus();
+  });
+
   function addMessage(text, type) {
     const message = document.createElement('div');
     message.className = `chat-message chat-message-${type}`;
@@ -157,6 +208,59 @@ export default function decorate(block) {
     messages.append(message);
     messages.scrollTop = messages.scrollHeight;
     return message;
+  }
+
+  function decorateResponse(message) {
+    message.querySelectorAll('img').forEach((image) => {
+      const source = image.getAttribute('src');
+      const fallback = document.createElement('span');
+      fallback.className = 'chat-image-fallback';
+      fallback.textContent = image.alt || 'Image unavailable';
+      let safeSource = false;
+      try {
+        safeSource = Boolean(source) && ['https:', 'http:'].includes(new URL(source, window.location.href).protocol);
+      } catch {
+        safeSource = false;
+      }
+      if (!safeSource) {
+        image.replaceWith(fallback);
+        return;
+      }
+      image.loading = 'lazy';
+      image.decoding = 'async';
+      image.referrerPolicy = 'no-referrer';
+      image.addEventListener('error', () => image.replaceWith(fallback), { once: true });
+      image.addEventListener('load', () => {
+        if (pending) messages.scrollTop = messages.scrollHeight;
+      }, { once: true });
+    });
+    const signals = {
+      '\u{1F534}': ['red', 'Red status'],
+      '\u{1F7E1}': ['amber', 'Amber status'],
+      '\u{1F7E2}': ['green', 'Green status'],
+    };
+    const walker = document.createTreeWalker(message, NodeFilter.SHOW_TEXT);
+    const textNodes = [];
+    while (walker.nextNode()) textNodes.push(walker.currentNode);
+    textNodes.forEach((textNode) => {
+      if (textNode.parentElement.closest('pre, code')) return;
+      const parts = textNode.textContent.split(/([\u{1F534}\u{1F7E1}\u{1F7E2}])/u);
+      if (parts.length === 1) return;
+      textNode.replaceWith(...parts.map((part) => {
+        if (!signals[part]) return document.createTextNode(part);
+        const [color, description] = signals[part];
+        const signal = document.createElement('span');
+        signal.className = `chat-signal chat-signal-${color}`;
+        signal.setAttribute('role', 'img');
+        signal.setAttribute('aria-label', description);
+        signal.title = description;
+        return signal;
+      }));
+    });
+    message.querySelectorAll('a').forEach((link) => {
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    });
   }
 
   function appendChunk(message, data) {
@@ -169,10 +273,7 @@ export default function decorate(block) {
     }
     responseText += text;
     message.innerHTML = renderMarkdown(responseText);
-    message.querySelectorAll('a').forEach((link) => {
-      link.target = '_blank';
-      link.rel = 'noopener noreferrer';
-    });
+    decorateResponse(message);
     messages.scrollTop = messages.scrollHeight;
     return false;
   }
@@ -193,8 +294,9 @@ export default function decorate(block) {
         'p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li',
         'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr',
         'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
+        'img',
       ],
-      ALLOWED_ATTR: ['href', 'title', 'start'],
+      ALLOWED_ATTR: ['href', 'title', 'start', 'src', 'alt'],
       ALLOW_DATA_ATTR: false,
       ALLOW_ARIA_ATTR: false,
     });
@@ -247,25 +349,60 @@ export default function decorate(block) {
     pending = true;
     responseText = '';
     sendButton.disabled = true;
-    message.textContent = 'Thinking...';
+    resetButton.disabled = true;
+    messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = true; });
+    message.classList.remove('chat-message-error');
+    const indicator = document.createElement('span');
+    indicator.className = 'chat-loading-bars';
+    indicator.setAttribute('aria-hidden', 'true');
+    for (let index = 0; index < 3; index += 1) {
+      indicator.append(document.createElement('span'));
+    }
+    const status = document.createElement('span');
+    status.className = 'chat-loading-status';
+    status.setAttribute('role', 'status');
+    status.textContent = 'Preparing a response...';
+    message.replaceChildren(indicator, status);
     message.classList.add('chat-message-loading');
     messages.setAttribute('aria-busy', 'true');
     try {
       await reply(text, message);
     } catch {
       message.classList.remove('chat-message-loading');
-      message.textContent = 'Something went wrong. Please try again.';
+      message.classList.add('chat-message-error');
+      if (!responseText) message.replaceChildren();
+      const error = document.createElement('div');
+      error.className = 'chat-error';
+      error.setAttribute('role', 'alert');
+      const errorIcon = document.createElement('img');
+      errorIcon.className = 'chat-error-icon';
+      errorIcon.src = `${iconURL}circle-alert.svg`;
+      errorIcon.alt = '';
+      const errorBody = document.createElement('div');
+      const errorTitle = document.createElement('strong');
+      errorTitle.textContent = responseText ? 'Response interrupted' : "We couldn't get a response";
+      const errorDescription = document.createElement('p');
+      errorDescription.className = 'chat-error-description';
+      errorDescription.textContent = responseText
+        ? 'Try again for a complete answer.' : 'Please try again in a moment.';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'chat-retry';
-      retry.textContent = 'Retry';
+      const retryIcon = document.createElement('img');
+      retryIcon.src = `${iconURL}rotate-cw.svg`;
+      retryIcon.alt = '';
+      retry.append(retryIcon, document.createTextNode('Try again'));
       retry.addEventListener('click', () => {
         if (!pending) respond(text, message);
       });
-      message.append(retry);
+      errorBody.append(errorTitle, errorDescription, retry);
+      error.append(errorIcon, errorBody);
+      message.append(error);
     } finally {
       pending = false;
       sendButton.disabled = !field.value.trim();
+      resetButton.disabled = false;
+      messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = false; });
       messages.setAttribute('aria-busy', 'false');
       messages.scrollTop = messages.scrollHeight;
     }
@@ -283,11 +420,23 @@ export default function decorate(block) {
     field.focus();
   }
 
-  content.prompts.forEach((prompt) => {
+  const promptIcons = ['credit-card', 'ticket', 'car-front', 'file-text'];
+  content.prompts.forEach((prompt, index) => {
     const button = document.createElement('button');
     button.type = 'button';
     button.className = 'chat-suggestion';
-    button.textContent = prompt;
+    const promptIcon = document.createElement('img');
+    promptIcon.className = 'chat-suggestion-icon';
+    promptIcon.src = `${iconURL}${promptIcons[index]}.svg`;
+    promptIcon.alt = '';
+    const promptText = document.createElement('span');
+    promptText.textContent = prompt;
+    button.append(promptIcon, promptText);
+    const arrow = document.createElement('img');
+    arrow.className = 'chat-suggestion-arrow';
+    arrow.src = `${iconURL}arrow-up-right.svg`;
+    arrow.alt = '';
+    button.append(arrow);
     button.addEventListener('click', () => {
       field.value = prompt;
       send();
