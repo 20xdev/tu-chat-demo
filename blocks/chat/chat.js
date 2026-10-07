@@ -17,22 +17,31 @@ export default function decorate(block) {
   block.textContent = '';
 
   const iconURL = 'https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/';
-  const launcher = document.createElement('button');
-  launcher.type = 'button';
+  const launcher = document.createElement('div');
   launcher.className = 'chat-launcher';
-  launcher.setAttribute('aria-label', 'Open Linkt Assistant');
-  launcher.setAttribute('aria-haspopup', 'dialog');
-  launcher.setAttribute('aria-expanded', 'false');
-  launcher.title = 'Open Linkt Assistant';
+  const launcherField = document.createElement('input');
+  launcherField.type = 'text';
+  launcherField.readOnly = true;
+  launcherField.placeholder = content.placeholder;
+  launcherField.setAttribute('aria-label', 'Open Linkt Assistant');
+  const expandButton = document.createElement('button');
+  expandButton.type = 'button';
+  expandButton.setAttribute('aria-label', 'Expand chat');
+  expandButton.title = 'Expand chat';
   const launcherIcon = document.createElement('img');
-  launcherIcon.src = `${iconURL}message-circle.svg`;
+  launcherIcon.src = `${iconURL}chevron-up.svg`;
   launcherIcon.alt = '';
-  launcher.append(launcherIcon);
+  expandButton.append(launcherIcon);
+  launcher.append(launcherField, expandButton);
 
   const panel = document.createElement('dialog');
   panel.className = 'chat-dialog';
   panel.id = `chat-panel-${document.querySelectorAll('.chat-dialog').length + 1}`;
-  launcher.setAttribute('aria-controls', panel.id);
+  [launcherField, expandButton].forEach((control) => {
+    control.setAttribute('aria-controls', panel.id);
+    control.setAttribute('aria-haspopup', 'dialog');
+    control.setAttribute('aria-expanded', 'false');
+  });
 
   const header = document.createElement('div');
   header.className = 'chat-header';
@@ -50,10 +59,10 @@ export default function decorate(block) {
   const closeButton = document.createElement('button');
   closeButton.type = 'button';
   closeButton.className = 'chat-close';
-  closeButton.setAttribute('aria-label', 'Close chat');
-  closeButton.title = 'Close chat';
+  closeButton.setAttribute('aria-label', 'Minimize chat');
+  closeButton.title = 'Minimize chat';
   const closeIcon = document.createElement('img');
-  closeIcon.src = `${iconURL}x.svg`;
+  closeIcon.src = `${iconURL}chevron-down.svg`;
   closeIcon.alt = '';
   closeButton.append(closeIcon);
   header.append(identity, closeButton);
@@ -103,14 +112,23 @@ export default function decorate(block) {
   }
   window.visualViewport?.addEventListener('resize', updateViewport);
   window.visualViewport?.addEventListener('scroll', updateViewport);
-  launcher.addEventListener('click', () => {
+  function openChat() {
+    if (panel.open) return;
     previousOverflow = document.body.style.overflow;
     panel.showModal();
     updateViewport();
     document.body.style.overflow = 'hidden';
-    launcher.setAttribute('aria-expanded', 'true');
+    launcher.hidden = true;
+    [launcherField, expandButton].forEach((control) => control.setAttribute('aria-expanded', 'true'));
     messages.scrollTop = messages.scrollHeight;
-    closeButton.focus();
+    field.focus();
+  }
+  launcher.addEventListener('click', openChat);
+  launcherField.addEventListener('keydown', (event) => {
+    if (['Enter', ' ', 'ArrowUp'].includes(event.key)) {
+      event.preventDefault();
+      openChat();
+    }
   });
   closeButton.addEventListener('click', () => panel.close());
   panel.addEventListener('keydown', (event) => {
@@ -121,8 +139,10 @@ export default function decorate(block) {
   });
   panel.addEventListener('close', () => {
     document.body.style.overflow = previousOverflow;
-    launcher.setAttribute('aria-expanded', 'false');
-    launcher.focus();
+    launcher.hidden = false;
+    launcherField.value = field.value;
+    [launcherField, expandButton].forEach((control) => control.setAttribute('aria-expanded', 'false'));
+    launcherField.focus();
   });
   let pending = false;
   let markdownLibraries;
