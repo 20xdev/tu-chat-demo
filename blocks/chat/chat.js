@@ -305,14 +305,16 @@ export default function decorate(block) {
       .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
     const chatAccessToken = tokenCookie
       ? decodeURIComponent(tokenCookie.slice('CHAT_ACCESS_TOKEN='.length)) : null;
-    const res = await fetch('https://tu-chat-server.vercel.app/chat', {
+    const res = await fetch('https://391665-624violetduck.adobeioruntime.net/api/v1/web/tu-appbuilder-chat-server/chat.http', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        CHAT_ACCESS_TOKEN: chatAccessToken,
-        conversationId,
+        'X-Chat-Access-Token': chatAccessToken,
       },
-      body: JSON.stringify({ messages: [{ role: 'user', text: userInput }] }),
+      body: JSON.stringify({
+        conversationId,
+        messages: [{ role: 'user', text: userInput }],
+      }),
     });
     if (!res.ok || !res.body) throw new Error('Chat request failed');
     const reader = res.body.getReader();
