@@ -187,6 +187,7 @@ export default function decorate(block) {
   let markdownLibraries;
   let renderMarkdown;
   let responseText = '';
+  const responseParts = new Map();
 
   resetButton.addEventListener('click', () => {
     if (pending) return;
@@ -265,17 +266,36 @@ export default function decorate(block) {
 
   function appendChunk(message, data) {
     if (data === '[DONE]') return true;
-    const { text } = JSON.parse(data);
-    if (typeof text !== 'string' || !text) return false;
-    if (message.classList.contains('chat-message-loading')) {
-      message.textContent = '';
-      message.classList.remove('chat-message-loading');
+    const { result, error } = JSON.parse(data);
+    if (error) throw new Error(error.message || 'Chat stream failed');
+    if (!result) return false;
+    if (['failed', 'canceled', 'rejected'].includes(result.status?.state)) {
+      throw new Error('Chat response failed');
     }
-    responseText += text;
-    message.innerHTML = renderMarkdown(responseText);
-    decorateResponse(message);
-    messages.scrollTop = messages.scrollHeight;
-    return false;
+    const artifacts = result.artifact ? [result.artifact] : (result.artifacts || []);
+    artifacts.forEach((artifact) => {
+      const text = (artifact.parts || [])
+        .filter((part) => part.kind === 'text' && typeof part.text === 'string')
+        .map((part) => part.text).join('');
+      const key = artifact.artifactId || 'artifact';
+      responseParts.set(key, result.append ? (responseParts.get(key) || '') + text : text);
+    });
+    const replyMessage = result.kind === 'message' ? result : result.status?.message;
+    const text = (replyMessage?.parts || [])
+      .filter((part) => part.kind === 'text' && typeof part.text === 'string')
+      .map((part) => part.text).join('');
+    if (text) responseParts.set(replyMessage.messageId || 'message', text);
+    responseText = [...responseParts.values()].join('\n\n');
+    if (responseText) {
+      if (message.classList.contains('chat-message-loading')) {
+        message.textContent = '';
+        message.classList.remove('chat-message-loading');
+      }
+      message.innerHTML = renderMarkdown(responseText);
+      decorateResponse(message);
+      messages.scrollTop = messages.scrollHeight;
+    }
+    return result.kind === 'status-update' && result.final === true;
   }
 
   async function reply(userInput, message) {
@@ -305,18 +325,32 @@ export default function decorate(block) {
       .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
     const chatAccessToken = tokenCookie
       ? decodeURIComponent(tokenCookie.slice('CHAT_ACCESS_TOKEN='.length)) : null;
-    const res = await fetch('https://391665-624violetduck.adobeioruntime.net/api/v1/web/tu-appbuilder-chat-server/chat.http', {
+    const res = await fetch('https://adobeioruntime.net/api/v1/web/391665-624violetduck/tu-appbuilder-chat-server/a2a.http', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        Accept: 'text/event-stream',
         'X-Chat-Access-Token': chatAccessToken,
       },
       body: JSON.stringify({
-        conversationId,
-        messages: [{ role: 'user', text: userInput }],
+        jsonrpc: '2.0',
+        id: crypto.randomUUID(),
+        method: 'message/stream',
+        params: {
+          message: {
+            kind: 'message',
+            messageId: crypto.randomUUID(),
+            contextId: conversationId,
+            role: 'user',
+            parts: [{ kind: 'text', text: userInput }],
+          },
+        },
       }),
     });
     if (!res.ok || !res.body) throw new Error('Chat request failed');
+    if (!res.headers.get('content-type')?.includes('text/event-stream')) {
+      throw new Error('Expected a chat event stream');
+    }
     const reader = res.body.getReader();
     const decoder = new TextDecoder();
     let buffer = '';
@@ -327,12 +361,13 @@ export default function decorate(block) {
         const chunk = await reader.read();
         done = chunk.done;
         buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
-        const lines = buffer.split('\n');
-        buffer = lines.pop();
-        if (done && buffer.trim()) lines.push(buffer);
-        const finished = lines
-          .filter((line) => line.startsWith('data:'))
-          .map((line) => line.slice(5).trim())
+        const events = buffer.split(/\r?\n\r?\n/);
+        buffer = events.pop();
+        if (done && buffer.trim()) events.push(buffer);
+        const finished = events
+          .map((event) => event.split(/\r?\n/)
+            .filter((line) => line.startsWith('data:'))
+            .map((line) => line.slice(5).trimStart()).join('\n'))
           .filter(Boolean)
           .some((data) => appendChunk(message, data));
         if (finished) {
@@ -350,6 +385,7 @@ export default function decorate(block) {
   async function respond(text, message) {
     pending = true;
     responseText = '';
+    responseParts.clear();
     sendButton.disabled = true;
     resetButton.disabled = true;
     messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = true; });
