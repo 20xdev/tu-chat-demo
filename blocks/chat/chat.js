@@ -187,6 +187,7 @@ export default function decorate(block) {
   let markdownLibraries;
   let renderMarkdown;
   let responseText = '';
+  let streamedText = '';
   const responseParts = new Map();
 
   resetButton.addEventListener('click', () => {
@@ -284,8 +285,11 @@ export default function decorate(block) {
     const text = (replyMessage?.parts || [])
       .filter((part) => part.kind === 'text' && typeof part.text === 'string')
       .map((part) => part.text).join('');
-    if (text) responseParts.set(replyMessage.messageId || 'message', text);
-    responseText = [...responseParts.values()].join('\n\n');
+    if (text) {
+      streamedText = result.kind === 'status-update' && result.status?.state === 'working'
+        ? streamedText + text : text;
+    }
+    responseText = responseParts.size ? [...responseParts.values()].join('\n\n') : streamedText;
     if (responseText) {
       if (message.classList.contains('chat-message-loading')) {
         message.textContent = '';
@@ -385,6 +389,7 @@ export default function decorate(block) {
   async function respond(text, message) {
     pending = true;
     responseText = '';
+    streamedText = '';
     responseParts.clear();
     sendButton.disabled = true;
     resetButton.disabled = true;
