@@ -1,4 +1,4 @@
-footer {
+footer:has(.footer) {
   background-color: #2b2f31;
   color: #fff;
   font-size: var(--body-font-size-xs);
@@ -6,8 +6,9 @@ footer {
 
 footer .footer > div {
   margin: auto;
-  max-width: 1200px;
-  padding: 40px 24px 24px;
+  box-sizing: border-box;
+  max-width: var(--content-width);
+  padding: 40px 24px 120px;
 }
 
 footer .footer .default-content-wrapper {
@@ -23,7 +24,7 @@ footer .footer p {
 footer .footer picture,
 footer .footer img {
   display: block;
-  max-width: 260px;
+  max-width: min(260px, 100%);
   height: auto;
 }
 
@@ -35,12 +36,12 @@ footer .footer p a {
 }
 
 footer .footer p a:hover {
-  color: var(--brand-color);
+  color: #b8e7c8;
 }
 
 @media (width >= 900px) {
   footer .footer > div {
-    padding: 40px 32px 24px;
+    padding: 48px 32px 120px;
   }
 
   footer .footer .default-content-wrapper {

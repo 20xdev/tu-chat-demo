@@ -3,17 +3,32 @@
   margin: 0;
   padding: 0;
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(257px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr));
   gap: 24px;
 }
 
 .cards > ul > li {
-  border: 1px solid #dadada;
-  background-color: var(--background-color);
+  overflow: hidden;
+  border: 1px solid #dce5e0;
+  border-radius: 16px;
+  background-color: var(--light-color);
 }
 
 .cards .cards-card-body {
-  margin: 16px;
+  margin: 24px;
+}
+
+.cards .cards-card-body > :first-child {
+  margin-top: 0;
+}
+
+.cards .cards-card-body > :last-child {
+  margin-bottom: 0;
+}
+
+.cards .cards-card-body strong {
+  font-size: 20px;
+  line-height: 1.4;
 }
 
 .cards .cards-card-image {

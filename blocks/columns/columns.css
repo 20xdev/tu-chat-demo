@@ -1,6 +1,11 @@
 .columns > div {
   display: flex;
   flex-direction: column;
+  gap: 24px;
+}
+
+.columns > div + div {
+  margin-top: 32px;
 }
 
 .columns img {
@@ -9,6 +14,15 @@
 
 .columns > div > div {
   order: 1;
+  min-width: 0;
+}
+
+.columns > div > div > :first-child {
+  margin-top: 0;
+}
+
+.columns > div > div > :last-child {
+  margin-bottom: 0;
 }
 
 .columns > div > .columns-img-col {
@@ -17,13 +31,14 @@
 
 .columns > div > .columns-img-col img {
   display: block;
+  border-radius: 16px;
 }
 
 @media (width >= 900px) {
   .columns > div {
     align-items: center;
     flex-direction: unset;
-    gap: 24px;
+    gap: 48px;
   }
 
   .columns > div > div {
