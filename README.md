@@ -8,6 +8,9 @@ Shared colour, typography, and content-width tokens live in `styles/styles.css`;
 block styles remain scoped to their blocks. The chat uses a compact bottom-centre
 launcher, a desktop dialog centred horizontally and vertically in the viewport,
 and a full-screen mobile dialog.
+The dialog separates its white header from the soft conversation background,
+with white assistant cards, green user bubbles, and a rounded composer. Keyboard
+focus remains visible, and reduced-motion preferences disable UI transitions.
 
 For visual checks, review `/`, `/pay-for-tolls`, `/account-and-passes`, and
 `/using-toll-roads` at desktop and mobile widths. Check the mobile navigation and
