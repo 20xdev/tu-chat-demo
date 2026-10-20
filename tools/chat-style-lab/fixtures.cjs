@@ -1,0 +1,125 @@
+const notice = '> **LOCAL DEMO:** Fictional data for visual testing. No live traffic, account, pricing or payment information.';
+
+exports.fixtures = {
+  journey: `## A little planning. A smoother journey.
+
+${notice}
+
+![Illustrative route from Riverside to Garden Park. Not a real map.](/__mock/route.svg)
+
+### Your journey at a glance
+
+| Journey detail | Demo value |
+| --- | --- |
+| Route | Riverside to Garden Park |
+| Vehicle | Passenger car |
+| Trip type | One-way journey |
+
+🟢 Vehicle details checked (demo)  
+🟡 Choose a payment option before you go (demo)
+
+[Compare passes](/account-and-passes) [Explore toll roads](/using-toll-roads)`,
+  compare: `## Find your kind of travel.
+
+${notice}
+
+Compare a few fictional options side by side. These are **not actual Linkt products or prices**.
+
+| Feature | Weekend Explorer | Everyday Traveller |
+| --- | --- | --- |
+| Best suited to | Occasional trips | Frequent journeys |
+| Demo coverage | Selected journey | Ongoing travel |
+| Demo setup | Choose travel dates | Add your vehicle |
+| Next step | Review a pass | Explore an account |
+
+### A simple way to choose
+
+1. Think about how often you travel.
+2. Check that your road and vehicle are covered.
+3. Review the official terms before making a choice.
+
+[Explore accounts and passes](/account-and-passes)`,
+  notice: `## Let's take it one step at a time.
+
+${notice}
+
+🟡 Sample notice awaiting review (demo)
+
+| Notice summary | Fictional value |
+| --- | --- |
+| Reference | DEMO-000123 |
+| Vehicle | DEMO-CAR |
+| Status | Not a real notice |
+
+### Your next steps
+
+1. **Check the details.** Match the vehicle and journey to your notice.
+2. **Review your options.** Use the official notice issuer's information.
+3. **Keep a confirmation.** Save the receipt if you make a payment.
+
+> Never enter payment information, passwords or a real notice reference into this mock preview.
+
+[Review payment information](/pay-for-tolls)`,
+  image: `## A picture can make it clearer.
+
+${notice}
+
+### Image available
+
+![Illustrative route from Riverside to Garden Park.](/__mock/route.svg)
+
+### Image unavailable
+
+![Route image unavailable. Continue with the written journey details below.](/__mock/missing-route.png)
+
+The missing image above deliberately returns **404** so you can inspect the accessible fallback.
+
+[View written road information](/using-toll-roads)`,
+  slow: `## Thanks for waiting.
+
+${notice}
+
+This mock waited **4.5 seconds** before streaming. The existing loading indicator, disabled send state and streamed Markdown are all using the real chat renderer.
+
+🟢 Mock response complete
+
+[Explore travel options](/account-and-passes)`,
+  error: `## You're back on track.
+
+${notice}
+
+The first request deliberately returned **503**. Your retry succeeded against the local mock API.
+
+🟢 Retry completed (demo)
+
+No live service was contacted.`,
+};
+
+exports.routeImage = `<svg xmlns="http://www.w3.org/2000/svg" width="760" height="220" viewBox="0 0 760 220">
+<rect width="760" height="220" rx="20" fill="#edf6ef"/>
+<path d="M0 62H760M0 170H760M175 0V220M550 0V220" stroke="#d7e8dc" stroke-width="22"/>
+<path d="M20 0L95 220M650 0L715 220" stroke="#dcebf0" stroke-width="32"/>
+<path d="M85 155H240Q280 155 280 118V100Q280 65 320 65H665" fill="none" stroke="#0a6e30" stroke-width="10" stroke-linecap="round"/>
+<path d="M85 155H240Q280 155 280 118V100Q280 65 320 65H665" fill="none" stroke="#9cdaa9" stroke-width="2" stroke-dasharray="4 9"/>
+<circle cx="85" cy="155" r="13" fill="white" stroke="#0a6e30" stroke-width="5"/>
+<circle cx="665" cy="65" r="13" fill="#0a6e30" stroke="white" stroke-width="5"/>
+<g font-family="sans-serif" font-size="17" font-weight="bold" fill="#214c31"><text x="42" y="197">Riverside</text><text x="602" y="109">Garden Park</text></g>
+<rect x="24" y="20" width="230" height="28" rx="14" fill="white"/><text x="39" y="39" font-family="sans-serif" font-size="12" fill="#58616c">ILLUSTRATIVE ROUTE / DEMO ONLY</text>
+</svg>`;
+
+const icon = '<svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24"><title>Journey checked</title><path d="m5 12 4 4 10-10" fill="none" stroke="#0a6e30" stroke-width="3"/></svg>';
+exports.fixtures.media = [
+  { kind: 'text', text: `## Images, SVG and icons\n\n${notice}\n\n### Markdown image\n\n![Journey map](/__mock/route.svg)\n\n### A2A image URL\n\n` },
+  { kind: 'file', file: { name: 'Journey image attachment', mimeType: 'image/svg+xml', uri: '/__mock/route.svg' } },
+  { kind: 'text', text: '\n\n### Base64 SVG icon\n\n' },
+  { kind: 'file', file: { name: 'Journey checked icon', mimeType: 'image/svg+xml', bytes: Buffer.from(icon).toString('base64') } },
+  { kind: 'text', text: `\n\n### Raw SVG in text\n\n${icon}\n\n### Base64 raster image (one pixel)\n\n` },
+  { kind: 'file', file: { name: 'One-pixel PNG', mimeType: 'image/png', bytes: 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=' } },
+  { kind: 'text', text: '\n\n### Invalid attachments show explanations\n\n' },
+  // eslint-disable-next-line no-script-url -- Intentional invalid-source fixture.
+  { kind: 'file', file: { name: 'Blocked URL', mimeType: 'image/png', uri: 'javascript:alert(1)' } },
+  { kind: 'file', file: { name: 'Invalid SVG', mimeType: 'image/svg+xml', bytes: Buffer.from('<svg>broken').toString('base64') } },
+  { kind: 'file', file: { name: 'Non-image file', mimeType: 'application/pdf', uri: '/__mock/document.pdf' } },
+  { kind: 'data', data: { icon: 'car' } },
+  { kind: 'text', text: '\n\nThe unsupported data part above is intentional. Arbitrary icon names or card schemas are not interpreted.\n\n[Written journey information](/using-toll-roads)' },
+];

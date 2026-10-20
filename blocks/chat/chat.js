@@ -1,3 +1,5 @@
+import { createResponseRenderer, mergeResponseParts } from '../../scripts/chat-response.js';
+
 const content = {
   title: 'Linkt Assistant',
   label: 'AI assistant',
@@ -188,9 +190,9 @@ export default function decorate(block) {
   });
   let pending = false;
   let markdownLibraries;
-  let renderMarkdown;
-  let responseText = '';
-  let streamedText = '';
+  let renderResponse;
+  let hasResponse = false;
+  let streamedParts = [];
   const responseParts = new Map();
 
   resetButton.addEventListener('click', () => {
@@ -217,24 +219,6 @@ export default function decorate(block) {
 
   function decorateResponse(message) {
     message.querySelectorAll('img').forEach((image) => {
-      const source = image.getAttribute('src');
-      const fallback = document.createElement('span');
-      fallback.className = 'chat-image-fallback';
-      fallback.textContent = image.alt || 'Image unavailable';
-      let safeSource = false;
-      try {
-        safeSource = Boolean(source) && ['https:', 'http:'].includes(new URL(source, window.location.href).protocol);
-      } catch {
-        safeSource = false;
-      }
-      if (!safeSource) {
-        image.replaceWith(fallback);
-        return;
-      }
-      image.loading = 'lazy';
-      image.decoding = 'async';
-      image.referrerPolicy = 'no-referrer';
-      image.addEventListener('error', () => image.replaceWith(fallback), { once: true });
       image.addEventListener('load', () => {
         if (pending) messages.scrollTop = messages.scrollHeight;
       }, { once: true });
@@ -278,29 +262,29 @@ export default function decorate(block) {
     }
     const artifacts = result.artifact ? [result.artifact] : (result.artifacts || []);
     artifacts.forEach((artifact) => {
-      const text = (artifact.parts || [])
-        .filter((part) => part.kind === 'text' && typeof part.text === 'string')
-        .map((part) => part.text).join('');
       const key = artifact.artifactId || 'artifact';
-      responseParts.set(key, result.append ? (responseParts.get(key) || '') + text : text);
+      const previous = responseParts.get(key) || [];
+      responseParts.set(key, mergeResponseParts(previous, artifact.parts || [], result.append));
     });
     const replyMessage = result.kind === 'message' ? result : result.status?.message;
-    const text = (replyMessage?.parts || [])
-      .filter((part) => part.kind === 'text' && typeof part.text === 'string')
-      .map((part) => part.text).join('');
-    if (text) {
-      streamedText = result.kind === 'status-update' && result.status?.state === 'working'
-        ? streamedText + text : text;
+    if (replyMessage?.parts?.length) {
+      streamedParts = mergeResponseParts(
+        streamedParts,
+        replyMessage.parts,
+        result.kind === 'status-update' && result.status?.state === 'working',
+      );
     }
-    responseText = responseParts.size ? [...responseParts.values()].join('\n\n') : streamedText;
-    if (responseText) {
-      if (message.classList.contains('chat-message-loading')) {
-        message.textContent = '';
+    const artifactParts = [...responseParts.values()].flat();
+    const parts = artifactParts.length ? artifactParts : streamedParts;
+    if (parts.length) {
+      const rendered = renderResponse(parts);
+      if (rendered.hasChildNodes()) {
+        message.replaceChildren(rendered);
         message.classList.remove('chat-message-loading');
+        hasResponse = true;
+        decorateResponse(message);
+        messages.scrollTop = messages.scrollHeight;
       }
-      message.innerHTML = renderMarkdown(responseText);
-      decorateResponse(message);
-      messages.scrollTop = messages.scrollHeight;
     }
     return result.kind === 'status-update' && result.final === true;
   }
@@ -316,17 +300,7 @@ export default function decorate(block) {
         });
     }
     const [{ marked }, { default: DOMPurify }] = await markdownLibraries;
-    renderMarkdown = (text) => DOMPurify.sanitize(marked.parse(text, { breaks: true }), {
-      ALLOWED_TAGS: [
-        'p', 'br', 'strong', 'em', 'del', 'a', 'ul', 'ol', 'li',
-        'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'hr',
-        'pre', 'code', 'table', 'thead', 'tbody', 'tr', 'th', 'td',
-        'img',
-      ],
-      ALLOWED_ATTR: ['href', 'title', 'start', 'src', 'alt'],
-      ALLOW_DATA_ATTR: false,
-      ALLOW_ARIA_ATTR: false,
-    });
+    renderResponse = createResponseRenderer(marked, DOMPurify);
     const tokenCookie = document.cookie.split(';')
       .map((cookie) => cookie.trim())
       .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
@@ -391,8 +365,8 @@ export default function decorate(block) {
 
   async function respond(text, message) {
     pending = true;
-    responseText = '';
-    streamedText = '';
+    hasResponse = false;
+    streamedParts = [];
     responseParts.clear();
     sendButton.disabled = true;
     resetButton.disabled = true;
@@ -416,7 +390,7 @@ export default function decorate(block) {
     } catch {
       message.classList.remove('chat-message-loading');
       message.classList.add('chat-message-error');
-      if (!responseText) message.replaceChildren();
+      if (!hasResponse) message.replaceChildren();
       const error = document.createElement('div');
       error.className = 'chat-error';
       error.setAttribute('role', 'alert');
@@ -426,10 +400,10 @@ export default function decorate(block) {
       errorIcon.alt = '';
       const errorBody = document.createElement('div');
       const errorTitle = document.createElement('strong');
-      errorTitle.textContent = responseText ? 'Response interrupted' : "We couldn't get a response";
+      errorTitle.textContent = hasResponse ? 'Response interrupted' : "We couldn't get a response";
       const errorDescription = document.createElement('p');
       errorDescription.className = 'chat-error-description';
-      errorDescription.textContent = responseText
+      errorDescription.textContent = hasResponse
         ? 'Try again for a complete answer.' : 'Please try again in a moment.';
       const retry = document.createElement('button');
       retry.type = 'button';
