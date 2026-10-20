@@ -135,9 +135,12 @@ export default function decorate(block) {
   let previousOverflow;
   function updateViewport() {
     if (!panel.open || !window.visualViewport) return;
+    panel.style.setProperty('--chat-viewport-width', `${window.visualViewport.width}px`);
     panel.style.setProperty('--chat-viewport-height', `${window.visualViewport.height}px`);
     panel.style.setProperty('--chat-viewport-top', `${window.visualViewport.offsetTop}px`);
+    panel.style.setProperty('--chat-viewport-left', `${window.visualViewport.offsetLeft}px`);
   }
+  window.addEventListener('resize', updateViewport);
   window.visualViewport?.addEventListener('resize', updateViewport);
   window.visualViewport?.addEventListener('scroll', updateViewport);
   function openChat() {

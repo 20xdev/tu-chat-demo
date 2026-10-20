@@ -13,6 +13,9 @@ For visual checks, review `/`, `/pay-for-tolls`, `/account-and-passes`, and
 `/using-toll-roads` at desktop and mobile widths. Check the mobile navigation and
 chat open, close, suggestion, message, and retry states. Page content and imagery
 are authored separately in AEM; CSS changes do not replace the demo content.
+With a conversation in progress, resize from desktop to mobile and back; verify
+that messages reflow and the close button and composer remain within the visible
+viewport, including when the mobile keyboard changes the available space.
 
 ## Environments
 - Preview: https://main--tu-chat-demo--20xdev.aem.page/

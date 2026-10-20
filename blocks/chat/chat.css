@@ -705,8 +705,8 @@
   }
 
   .chat .chat-dialog {
-    inset: var(--chat-viewport-top, 0) 0 auto;
-    width: 100%;
+    inset: var(--chat-viewport-top, 0) auto auto var(--chat-viewport-left, 0);
+    width: min(100%, var(--chat-viewport-width, 100dvw));
     height: var(--chat-viewport-height, 100dvh);
     margin: 0;
     padding: env(safe-area-inset-top) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
