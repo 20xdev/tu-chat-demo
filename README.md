@@ -111,12 +111,20 @@ Valid instructions remain readable for unsuccessful or malformed results.
 Titles, ordered steps, alt text, and captions are plain text. Illustrations are
 not assigned to steps: media ordering is preserved as supplied.
 
-**The real help-image host is not confirmed.** No image host is guessed from
-the agent/API URL, current page, or a public Linkt domain. Until configured,
-illustrations have explanatory unavailable states; the answer, steps, captions
-and valid video links remain usable. No installation assets have been copied or
-invented. The fixture uses the two image references from the supplied abbreviated
-contract; it does not claim to verify them or the full six-image payload.
+Six installation illustrations are stored in [`help/tags/`](help/tags/), matching
+the root-relative `/help/tags/` paths supplied by the agent. With the project
+owner's confirmation of reuse authorisation, they were downloaded on 2026-10-21
+from the [official Linkt installation guide's](https://www.linkt.com.au/help/travelling-toll-roads/installing-tags-in-cars-or-light-commercial-vehicles)
+asset directory, `https://www.linkt.com.au/content/dam/linkt/help/illustrations/`.
+Original SVG files and names are preserved: the `C-type` and `D-type` variants
+of `tag-insert-car.svg`, `tag-position-car.svg`, and `tag-angle-car.svg`.
+
+**The renderer still requires an explicitly configured HTTPS asset base.**
+Adding these files does not infer a host from the agent/API URL or current page,
+and does not enable HTTP localhost media. Until configured, illustrations have
+explanatory unavailable states; the answer, steps, captions and valid video links
+remain usable. The fixture uses the two image references from the supplied
+abbreviated contract, rather than fabricating the full six-image response.
 
 After confirming the trusted HTTPS asset host and allowed directory, supply the
 page metadata `chat-help-asset-base`. For example, **only after replacing this
