@@ -7,7 +7,10 @@ The site uses a Linkt-aligned green and white palette and the bundled Open Sans 
 Shared colour, typography, and content-width tokens live in `styles/styles.css`;
 block styles remain scoped to their blocks. The chat uses a compact bottom-centre
 launcher, a desktop dialog centred horizontally and vertically in the viewport,
-and a full-screen mobile dialog.
+and a full-screen mobile dialog. At viewport widths of 1200px and above, the
+dialog expands up to 1600px wide and 1200px tall, with viewport gutters, a wider
+conversation area and 18px message/composer text. Smaller desktop/tablet layouts
+and the mobile keyboard-aware sizing are unchanged.
 The dialog separates its white header from the soft conversation background,
 with white assistant cards, green user bubbles, and a rounded composer. Keyboard
 focus remains visible, and reduced-motion preferences disable UI transitions.

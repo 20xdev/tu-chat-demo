@@ -665,6 +665,51 @@ const cases = [
     assert(!host.hasChildNodes() && state.tools.size === 0, 'Media was inferred from answer wording');
     view.dispose();
   }],
+  ['Chat scales on large screens and stays centred through desktop/mobile resizing', async () => {
+    const frame = document.createElement('iframe');
+    frame.title = 'Isolated chat layout regression';
+    frame.style.cssText = 'position:fixed;top:0;left:0;border:0;visibility:hidden;width:1920px;height:1080px';
+    frame.src = '/';
+    document.body.append(frame);
+    try {
+      await waitFor(() => frame.contentDocument?.querySelector('.chat-field'), 'chat layout initialisation');
+      const doc = frame.contentDocument;
+      const win = frame.contentWindow;
+      doc.querySelector('.chat-launcher-trigger').click();
+      doc.getAnimations().filter((animation) => Number.isFinite(animation.effect
+        .getComputedTiming().endTime)).forEach((animation) => animation.finish());
+      const sizes = [
+        [1920, 1080, 1600, 984, 18],
+        [2560, 1440, 1600, 1200, 18],
+        [1366, 768, 1238, 672, 18],
+        [1024, 768, 960, 656, 16],
+        [390, 844, 390, 844, 16],
+        [1920, 1080, 1600, 984, 18],
+      ];
+      // eslint-disable-next-line no-restricted-syntax -- Sequential sizes exercise one open dialog.
+      for (const [width, height, expectedWidth, expectedHeight, fontSize] of sizes) {
+        frame.style.width = `${width}px`;
+        frame.style.height = `${height}px`;
+        win.dispatchEvent(new win.Event('resize'));
+        const dialog = doc.querySelector('.chat-dialog');
+        // eslint-disable-next-line no-await-in-loop
+        await waitFor(() => {
+          const bounds = dialog.getBoundingClientRect();
+          return Math.abs(bounds.width - expectedWidth) < 1
+            && Math.abs(bounds.height - expectedHeight) < 1;
+        }, `dialog sizing at ${width}x${height}`);
+        const bounds = dialog.getBoundingClientRect();
+        assert(Math.abs(bounds.left - (width - expectedWidth) / 2) < 1, 'Dialog lost horizontal centre');
+        assert(Math.abs(bounds.top - (height - expectedHeight) / 2) < 1, 'Dialog lost vertical centre');
+        assert(dialog.scrollWidth <= dialog.clientWidth, 'Dialog has horizontal overflow');
+        const field = doc.querySelector('.chat-field');
+        assert(parseFloat(win.getComputedStyle(field).fontSize) === fontSize, 'Composer font did not scale');
+        assert(field.getBoundingClientRect().bottom <= bounds.bottom, 'Composer fell outside the dialog');
+      }
+    } finally {
+      frame.remove();
+    }
+  }],
   ['Full chat flow preserves auth/context, blocks duplicates, and handles HTTP/SSE failures', async () => {
     const frame = document.createElement('iframe');
     frame.title = 'Isolated local chat regression';

@@ -890,6 +890,27 @@
   text-align: center;
 }
 
+@media (width >= 1200px) {
+  .chat {
+    --chat-content-width: 1120px;
+    --chat-gutter: 40px;
+  }
+
+  .chat .chat-dialog {
+    width: min(1600px, calc(100vw - 128px));
+    height: min(1200px, calc(100dvh - 96px));
+  }
+
+  .chat .chat-message,
+  .chat .chat-field {
+    font-size: 18px;
+  }
+
+  .chat .chat-title {
+    font-size: 20px;
+  }
+}
+
 @media (width < 600px) {
   .chat {
     --chat-gutter: 16px;
