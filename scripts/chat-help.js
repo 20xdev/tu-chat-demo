@@ -49,11 +49,15 @@ function imageURL(source, assetBase) {
     if (!(error instanceof TypeError)) throw error;
     return { error: 'The illustration URL or configured asset base is invalid.' };
   }
-  if (base.protocol !== 'https:' || base.username || base.password || base.search || base.hash
+  const localDevelopment = base.protocol === 'http:'
+    && base.origin === new URL(import.meta.url).origin
+    && ['localhost', '127.0.0.1', '[::1]'].includes(base.hostname);
+  if ((base.protocol !== 'https:' && !localDevelopment)
+    || base.username || base.password || base.search || base.hash
     || !base.pathname.endsWith('/')) {
     return { error: 'Help-image hosting requires a trusted HTTPS asset directory.' };
   }
-  if (url.protocol !== 'https:' || url.username || url.password || url.search || url.hash
+  if (url.protocol !== base.protocol || url.username || url.password || url.search || url.hash
     || url.origin !== base.origin || !url.pathname.startsWith(base.pathname)) {
     return { error: 'The illustration URL is outside the approved asset location.' };
   }

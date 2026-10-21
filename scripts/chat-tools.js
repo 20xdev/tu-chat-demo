@@ -215,7 +215,8 @@ function helpView(value, host, assetBase) {
 export default function createToolViews(
   container,
   onFollowUp,
-  helpAssetBase = getMetadata('chat-help-asset-base'),
+  helpAssetBase = getMetadata('chat-help-asset-base')
+    || new URL('../help/tags/', import.meta.url).href,
 ) {
   const views = new Map();
   let busy = false;

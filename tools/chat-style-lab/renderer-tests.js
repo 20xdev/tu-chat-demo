@@ -436,11 +436,57 @@ const cases = [
     );
     assert(root.url === `${helpBase}mini.svg`, 'Origin-only configuration lost the approved tag path');
   }],
-  ['Missing asset configuration never guesses a host, even for absolute URLs', () => {
+  ['Explicitly empty asset configuration never guesses a host, even for absolute URLs', () => {
     [sampleHelp.media[0], { type: 'image', src: `${helpBase}mini.svg` }].forEach((entry) => {
       const result = resolveHelpMediaURL(entry, '');
       assert(result.error?.includes('not been configured') && !result.url, 'Asset host was guessed');
     });
+  }],
+  ['HTTP help images are restricted to same-origin loopback development', () => {
+    const base = new URL('/help/tags/', import.meta.url);
+    assert(resolveHelpMediaURL(sampleHelp.media[0], base.href).url, 'Local asset was rejected');
+    const otherPort = new URL(base);
+    otherPort.protocol = 'http:';
+    otherPort.port = base.port === '3199' ? '3198' : '3199';
+    const remote = 'http://assets.example.invalid/help/tags/';
+    [otherPort.href, remote].forEach((untrusted) => {
+      assert(resolveHelpMediaURL(sampleHelp.media[0], untrusted).error, 'Untrusted HTTP base loaded');
+    });
+    ['/help/private.svg', 'http://unapproved.invalid/help/tags/mini.svg'].forEach((src) => {
+      assert(resolveHelpMediaURL({ type: 'image', src }, base.href).error, 'Local policy escaped');
+    });
+  }],
+  ['All six bundled help illustrations load with the default asset base', async () => {
+    const host = document.createElement('div');
+    document.body.append(host);
+    const view = createToolViews(host, () => {});
+    try {
+      const media = ['C', 'D'].flatMap((tag) => ['insert', 'position', 'angle'].map((stage) => ({
+        type: 'image',
+        src: `/help/tags/${tag}-type-tag-${stage}-car.svg`,
+        alt: `${tag}-type tag: ${stage}`,
+      })));
+      view.update(new Map([['helpMedia:bundled', {
+        kind: 'helpMedia', value: { ...sampleHelp, media },
+      }]]));
+      const images = [...host.querySelectorAll('img')];
+      assert(images.length === 6, 'Default configuration did not create six illustrations');
+      images.forEach((image) => {
+        image.loading = 'eager';
+        assert(
+          new URL(image.src).origin === new URL(import.meta.url).origin,
+          'Image left the local asset origin',
+        );
+      });
+      await waitFor(
+        () => images.every((image) => image.complete && image.naturalWidth > 0),
+        'all six bundled illustrations',
+      );
+      assert(!host.querySelector('.chat-tool-fallback'), 'Bundled image fell back unexpectedly');
+    } finally {
+      view.dispose();
+      host.remove();
+    }
   }],
   ['Unsafe image schemes, origins, credentials and asset-path escapes are rejected', () => {
     // eslint-disable-next-line no-script-url -- Intentional invalid URL fixtures.
@@ -645,7 +691,14 @@ const cases = [
         const events = mode === 'structured' ? [
           {
             result: status([text('Provisional'), tool('routePlan', { ok: false }),
-              tool('helpMedia', sampleHelp), tool('followUps', { options: ['Ask again'] })]),
+              tool('helpMedia', {
+                ...sampleHelp,
+                media: [
+                  { ...sampleHelp.media[0], src: '/help/tags/D-type-tag-insert-car.svg' },
+                  { ...sampleHelp.media[1], src: '/help/tags/C-type-tag-insert-car.svg' },
+                  sampleHelp.media[2],
+                ],
+              }), tool('followUps', { options: ['Ask again'] })]),
           },
           { result: { kind: 'artifact-update', artifact: { artifactId: 'a', parts: [text('Final answer')] }, lastChunk: true } },
           { result: status([], 'completed') },
@@ -671,7 +724,14 @@ const cases = [
         doc.querySelector('.chat-help ol li').textContent === 'Insert the tag.',
         'Help instructions were lost when the final artifact arrived',
       );
-      assert(!doc.querySelector('.chat-help img, .chat-help iframe'), 'Unconfigured media loaded');
+      assert(doc.querySelectorAll('.chat-help img').length === 2, 'Bundled image URLs were not wired');
+      const helpImages = [...doc.querySelectorAll('.chat-help img')];
+      helpImages.forEach((image) => { image.loading = 'eager'; });
+      await waitFor(
+        () => helpImages.every((image) => image.complete && image.naturalWidth > 0),
+        'bundled images inside the actual chat',
+      );
+      assert(!doc.querySelector('.chat-help iframe'), 'Video unexpectedly embedded');
       const followUp = doc.querySelector('.chat-followup');
       assert(followUp, 'Follow-up button was not rendered');
       mode = 'complete';

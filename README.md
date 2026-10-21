@@ -119,15 +119,16 @@ asset directory, `https://www.linkt.com.au/content/dam/linkt/help/illustrations/
 Original SVG files and names are preserved: the `C-type` and `D-type` variants
 of `tag-insert-car.svg`, `tag-position-car.svg`, and `tag-angle-car.svg`.
 
-**The renderer still requires an explicitly configured HTTPS asset base.**
-Adding these files does not infer a host from the agent/API URL or current page,
-and does not enable HTTP localhost media. Until configured, illustrations have
-explanatory unavailable states; the answer, steps, captions and valid video links
-remain usable. The fixture uses the two image references from the supplied
-abbreviated contract, rather than fabricating the full six-image response.
+**The chat uses the bundled `/help/tags/` directory on its own code origin by
+default.** No metadata is needed for these six illustrations. Deploy the SVG files
+alongside the chat scripts; copying assets locally does not publish them to an
+existing AEM preview/live site. The fixture uses the two image references from
+the supplied abbreviated contract, rather than fabricating the full six-image
+response. Browser regression checks additionally load all six real SVG files.
 
-After confirming the trusted HTTPS asset host and allowed directory, supply the
-page metadata `chat-help-asset-base`. For example, **only after replacing this
+To override the bundled location with a confirmed trusted HTTPS asset host and
+directory, supply page metadata `chat-help-asset-base`. For example,
+**only after replacing this
 example with the approved location**:
 
 ```html
@@ -138,10 +139,14 @@ An origin-only configuration uses the observed `/help/tags/` directory. A full
 directory URL must end with `/`; relative filenames resolve inside it, while
 root-relative paths retain their path on that approved origin. Both relative
 and absolute image URLs must remain within the configured origin and directory.
-HTTP, protocol-relative URLs, embedded credentials, query/fragment parameters,
+Protocol-relative URLs, embedded credentials, query/fragment parameters,
 path escapes, ambiguous encoded separators and invalid URL syntax are rejected.
-There is no localhost/HTTP exception. The backend payload cannot configure its
-own asset base.
+HTTP is allowed only for loopback development (`localhost`, `127.0.0.1`, or
+`[::1]`) on the exact origin serving the chat helper module, including its port.
+Other HTTP origins remain blocked, and production asset locations require HTTPS.
+The backend payload cannot configure its own asset base. Invalid explicit
+configuration and failed image loads produce visible fallbacks, not a silent
+switch to another host.
 
 Images use normal lazy `<img>` elements, anonymous CORS, no-referrer, reserved
 layout space, and one-shot load-error fallbacks. The configured asset host must
