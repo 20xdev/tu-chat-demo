@@ -1,4 +1,8 @@
-import { createResponseRenderer, mergeResponseParts } from '../../scripts/chat-response.js';
+import { createResponseRenderer } from '../../scripts/chat-response.js';
+import {
+  answerParts, applyTurnEvent, createChatRequest, createTurnState, readA2AStream, turnFinished,
+} from '../../scripts/chat-stream.js';
+import createToolViews from '../../scripts/chat-tools.js';
 
 const content = {
   title: 'Linkt Assistant',
@@ -191,12 +195,20 @@ export default function decorate(block) {
   let pending = false;
   let markdownLibraries;
   let renderResponse;
-  let hasResponse = false;
-  let streamedParts = [];
-  const responseParts = new Map();
+  let activeTurn;
+  const turns = new Map();
+
+  function disposeTurn(turn) {
+    turn.disposed = true;
+    turn.controller.abort();
+    turn.tools.dispose();
+    turns.delete(turn.message);
+  }
 
   resetButton.addEventListener('click', () => {
     if (pending) return;
+    turns.forEach(disposeTurn);
+    activeTurn = undefined;
     conversationId = crypto.randomUUID();
     messages.replaceChildren();
     messages.hidden = true;
@@ -252,44 +264,31 @@ export default function decorate(block) {
     });
   }
 
-  function appendChunk(message, data) {
-    if (data === '[DONE]') return true;
-    const { result, error } = JSON.parse(data);
-    if (error) throw new Error(error.message || 'Chat stream failed');
-    if (!result) return false;
-    if (['failed', 'canceled', 'rejected'].includes(result.status?.state)) {
-      throw new Error('Chat response failed');
+  function updateTurn(turn) {
+    if (turn.disposed || turn.contextId !== conversationId || !turn.message.isConnected) return;
+    if (turn.renderedVersion !== turn.state.answerVersion) {
+      turn.answer.replaceChildren(renderResponse(answerParts(turn.state)));
+      turn.answer.hidden = !turn.answer.hasChildNodes();
+      decorateResponse(turn.answer);
+      turn.renderedVersion = turn.state.answerVersion;
     }
-    const artifacts = result.artifact ? [result.artifact] : (result.artifacts || []);
-    artifacts.forEach((artifact) => {
-      const key = artifact.artifactId || 'artifact';
-      const previous = responseParts.get(key) || [];
-      responseParts.set(key, mergeResponseParts(previous, artifact.parts || [], result.append));
-    });
-    const replyMessage = result.kind === 'message' ? result : result.status?.message;
-    if (replyMessage?.parts?.length) {
-      streamedParts = mergeResponseParts(
-        streamedParts,
-        replyMessage.parts,
-        result.kind === 'status-update' && result.status?.state === 'working',
-      );
+    turn.tools.update(turn.state.tools);
+    const notices = {
+      'input-required': 'More information is needed. You can reply in this conversation.',
+      'auth-required': 'Authentication is required before this request can continue.',
+    };
+    turn.notice.textContent = notices[turn.state.outcome] || '';
+    turn.notice.hidden = !turn.notice.textContent;
+    turn.hasResponse = !turn.answer.hidden || !turn.toolContainer.hidden || !turn.notice.hidden;
+    if (turn.hasResponse) {
+      turn.indicator.remove();
+      turn.loadingStatus.remove();
+      turn.message.classList.remove('chat-message-loading');
     }
-    const artifactParts = [...responseParts.values()].flat();
-    const parts = artifactParts.length ? artifactParts : streamedParts;
-    if (parts.length) {
-      const rendered = renderResponse(parts);
-      if (rendered.hasChildNodes()) {
-        message.replaceChildren(rendered);
-        message.classList.remove('chat-message-loading');
-        hasResponse = true;
-        decorateResponse(message);
-        messages.scrollTop = messages.scrollHeight;
-      }
-    }
-    return result.kind === 'status-update' && result.final === true;
+    messages.scrollTop = messages.scrollHeight;
   }
 
-  async function reply(userInput, message) {
+  async function reply(userInput, turn) {
     if (!markdownLibraries) {
       const markdownURL = 'https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.esm.js';
       const sanitizerURL = 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs';
@@ -300,77 +299,69 @@ export default function decorate(block) {
         });
     }
     const [{ marked }, { default: DOMPurify }] = await markdownLibraries;
+    if (turn.disposed || turn.contextId !== conversationId) return;
     renderResponse = createResponseRenderer(marked, DOMPurify);
     const tokenCookie = document.cookie.split(';')
       .map((cookie) => cookie.trim())
       .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
     const chatAccessToken = tokenCookie
       ? decodeURIComponent(tokenCookie.slice('CHAT_ACCESS_TOKEN='.length)) : null;
-    const res = await fetch('https://adobeioruntime.net/api/v1/web/391665-624violetduck/tu-appbuilder-chat-server/a2a.http', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Accept: 'text/event-stream',
-        'X-Chat-Access-Token': chatAccessToken,
-      },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        id: crypto.randomUUID(),
-        method: 'message/stream',
-        params: {
-          message: {
-            kind: 'message',
-            messageId: crypto.randomUUID(),
-            contextId: conversationId,
-            role: 'user',
-            parts: [{ kind: 'text', text: userInput }],
-          },
-        },
-      }),
-    });
+    const request = createChatRequest(userInput, turn.contextId, chatAccessToken);
+    request.signal = turn.controller.signal;
+    const res = await fetch('https://adobeioruntime.net/api/v1/web/391665-624violetduck/tu-appbuilder-chat-server/a2a.http', request);
     if (!res.ok || !res.body) throw new Error('Chat request failed');
     if (!res.headers.get('content-type')?.includes('text/event-stream')) {
       throw new Error('Expected a chat event stream');
     }
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let done = false;
-    try {
-      while (!done) {
-        // eslint-disable-next-line no-await-in-loop
-        const chunk = await reader.read();
-        done = chunk.done;
-        buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !done });
-        const events = buffer.split(/\r?\n\r?\n/);
-        buffer = events.pop();
-        if (done && buffer.trim()) events.push(buffer);
-        const finished = events
-          .map((event) => event.split(/\r?\n/)
-            .filter((line) => line.startsWith('data:'))
-            .map((line) => line.slice(5).trimStart()).join('\n'))
-          .filter(Boolean)
-          .some((data) => appendChunk(message, data));
-        if (finished) {
-          // eslint-disable-next-line no-await-in-loop
-          await reader.cancel();
-          done = true;
-        }
-      }
-    } finally {
-      reader.releaseLock();
-    }
-    if (message.classList.contains('chat-message-loading')) throw new Error('Empty response');
+    await readA2AStream(res.body, (envelope) => {
+      if (turn.disposed || turn.contextId !== conversationId) return true;
+      applyTurnEvent(turn.state, envelope);
+      updateTurn(turn);
+      return turn.state.closed;
+    });
+    if (turn.disposed) return;
+    if (!turnFinished(turn.state)) throw new Error('Chat response interrupted');
+    if (!turn.hasResponse) throw new Error('Empty response');
+  }
+
+  function setBusy(value) {
+    pending = value;
+    sendButton.disabled = value || !field.value.trim();
+    resetButton.disabled = value;
+    messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = value; });
+    turns.forEach((turn) => turn.tools.setBusy(value));
+    messages.setAttribute('aria-busy', String(value));
   }
 
   async function respond(text, message) {
-    pending = true;
-    hasResponse = false;
-    streamedParts = [];
-    responseParts.clear();
-    sendButton.disabled = true;
-    resetButton.disabled = true;
-    messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = true; });
+    if (pending) return;
+    if (turns.has(message)) disposeTurn(turns.get(message));
+    const turn = {
+      message,
+      contextId: conversationId,
+      controller: new AbortController(),
+      state: createTurnState(conversationId),
+      renderedVersion: -1,
+      hasResponse: false,
+      disposed: false,
+      answer: document.createElement('div'),
+      toolContainer: document.createElement('div'),
+      notice: document.createElement('p'),
+    };
+    turn.answer.className = 'chat-answer';
+    turn.toolContainer.className = 'chat-tools';
+    turn.notice.className = 'chat-turn-status';
+    turn.answer.hidden = true;
+    turn.toolContainer.hidden = true;
+    turn.notice.hidden = true;
+    turn.tools = createToolViews(turn.toolContainer, (option) => {
+      if (pending || turn.disposed || turn.contextId !== conversationId) return;
+      field.value = option;
+      form.requestSubmit();
+    });
+    turns.set(message, turn);
+    activeTurn = turn;
+    setBusy(true);
     message.classList.remove('chat-message-error');
     const indicator = document.createElement('span');
     indicator.className = 'chat-loading-bars';
@@ -382,15 +373,17 @@ export default function decorate(block) {
     status.className = 'chat-loading-status';
     status.setAttribute('role', 'status');
     status.textContent = 'Preparing a response...';
-    message.replaceChildren(indicator, status);
+    turn.indicator = indicator;
+    turn.loadingStatus = status;
+    message.replaceChildren(indicator, status, turn.answer, turn.toolContainer, turn.notice);
     message.classList.add('chat-message-loading');
-    messages.setAttribute('aria-busy', 'true');
     try {
-      await reply(text, message);
+      await reply(text, turn);
     } catch {
+      if (turn.disposed || turn.contextId !== conversationId) return;
       message.classList.remove('chat-message-loading');
       message.classList.add('chat-message-error');
-      if (!hasResponse) message.replaceChildren();
+      if (!turn.hasResponse) message.replaceChildren();
       const error = document.createElement('div');
       error.className = 'chat-error';
       error.setAttribute('role', 'alert');
@@ -400,10 +393,10 @@ export default function decorate(block) {
       errorIcon.alt = '';
       const errorBody = document.createElement('div');
       const errorTitle = document.createElement('strong');
-      errorTitle.textContent = hasResponse ? 'Response interrupted' : "We couldn't get a response";
+      errorTitle.textContent = turn.hasResponse ? 'Response interrupted' : "We couldn't get a response";
       const errorDescription = document.createElement('p');
       errorDescription.className = 'chat-error-description';
-      errorDescription.textContent = hasResponse
+      errorDescription.textContent = turn.hasResponse
         ? 'Try again for a complete answer.' : 'Please try again in a moment.';
       const retry = document.createElement('button');
       retry.type = 'button';
@@ -419,12 +412,10 @@ export default function decorate(block) {
       error.append(errorIcon, errorBody);
       message.append(error);
     } finally {
-      pending = false;
-      sendButton.disabled = !field.value.trim();
-      resetButton.disabled = false;
-      messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = false; });
-      messages.setAttribute('aria-busy', 'false');
-      messages.scrollTop = messages.scrollHeight;
+      if (activeTurn === turn && !turn.disposed) {
+        setBusy(false);
+        messages.scrollTop = messages.scrollHeight;
+      }
     }
   }
 
@@ -479,6 +470,14 @@ export default function decorate(block) {
     field.style.height = `${field.scrollHeight}px`;
     sendButton.disabled = pending || !field.value.trim();
   });
+
+  window.addEventListener('pagehide', (event) => {
+    if (event.persisted) return;
+    turns.forEach(disposeTurn);
+    window.removeEventListener('resize', updateViewport);
+    window.visualViewport?.removeEventListener('resize', updateViewport);
+    window.visualViewport?.removeEventListener('scroll', updateViewport);
+  }, { once: true });
 
   return block;
 }

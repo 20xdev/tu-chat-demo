@@ -50,9 +50,126 @@ active SVG in the page. Common shapes, text, gradients and local definitions are
 supported; scripts, event handlers, animation, stylesheets, foreign HTML, and
 external SVG references are not. SVG/PNG icons use the same image path and retain
 natural sizing. Arbitrary icon names, icon-font HTML, non-image files, and
-uncontracted `data`-part schemas are not interpreted. Invalid/unsupported content
+uncontracted `data`-part schemas are not interpreted. Invalid image attachments
 and image load failures show an explanatory text fallback. Data URLs must be
 allowed by the deployed `img-src` policy to display inline images.
+
+### Structured routes and follow-ups
+
+The existing A2A 0.3 `message/stream` URL and cookie-based
+`X-Chat-Access-Token` authentication are unchanged. `scripts/chat-stream.js`
+adapts task snapshots, status messages, artifacts, and direct messages into
+per-turn state. It retains structured tool results when final answer artifacts
+replace provisional text. Artifact `lastChunk` is tracked separately from task
+completion. A stream closing without a completion/action-required state retains
+partial content and shows the existing interruption/retry UI; `[DONE]` alone is
+not A2A completion. A direct A2A message is a complete message response.
+Adobe may buffer the response; the loading indicator does not promise live tokens.
+
+Recognised data parts use:
+
+```json
+{"kind":"data","data":{"toolData":{"kind":"routePlan","toolUseId":"route-1","value":{"ok":true}}}}
+{"kind":"data","data":{"toolData":{"kind":"followUps","toolUseId":"followups-1","value":{"options":["What roads are tolled?"]}}}}
+{"kind":"data","data":{"toolData":{"kind":"helpMedia","toolUseId":"help-1","value":{"found":true,"title":"Installing your tag","steps":["Returned instruction"],"media":[]}}}}
+```
+
+The abbreviated `routePlan.value` above must also contain labelled `origin` and
+`destination` positions and nonempty `segments` with a boolean `tolled` and at
+least two valid points each. Positions must be finite numeric
+`[longitude, latitude]` pairs in geographic ranges. Invalid geometry rejects the
+map rather than joining across bad points. All valid segment points are
+preserved; segments are not connected or simplified. Available distance,
+duration, toll estimates, and assumptions accompany the map. Missing currency
+is not assumed to be AUD.
+
+`scripts/chat-tools.js` uses the approved **demo** provider: Leaflet 1.9.4
+(JS/CSS lazily loaded from jsDelivr) and
+`https://tile.openstreetmap.org/{z}/{x}/{y}.png`. No API key or backend credentials
+are required. Attribution remains visible, tile requests send an origin referrer,
+and normal browser caching is retained. See the
+[OSM tile usage policy](https://operations.osmfoundation.org/policies/tiles/).
+There is no service SLA: production use needs a provider/privacy/capacity review.
+Browser requests reveal the client's IP and viewed map area to the tile service.
+A restrictive deployment CSP must permit the pinned CDN scripts/styles and OSM
+tile images; the local mock's API restriction is not relaxed.
+
+Tolled roads use solid green lines; untolled roads use dashed slate lines.
+Written summaries and assumptions remain available if the provider cannot load.
+Follow-up buttons use the normal send flow and conversation UUID, and are
+disabled during requests. Results upsert by tool-call identity within their turn.
+Unknown data kinds and internal tool progress are ignored, never rendered as HTML.
+Reset/retry disposes obsolete maps and cancels obsolete requests. Chat history
+remains in-memory only; this feature does not add persistence or simultaneous sends.
+
+### Illustrated help and video references
+
+`helpMedia` is collected from the same status, artifact, task and message parts.
+Cards are retained alongside the final text answer and upserted per tool-call ID
+within their assistant turn. Only the boolean `found: true` enables media.
+Valid instructions remain readable for unsuccessful or malformed results.
+Titles, ordered steps, alt text, and captions are plain text. Illustrations are
+not assigned to steps: media ordering is preserved as supplied.
+
+**The real help-image host is not confirmed.** No image host is guessed from
+the agent/API URL, current page, or a public Linkt domain. Until configured,
+illustrations have explanatory unavailable states; the answer, steps, captions
+and valid video links remain usable. No installation assets have been copied or
+invented. The fixture uses the two image references from the supplied abbreviated
+contract; it does not claim to verify them or the full six-image payload.
+
+After confirming the trusted HTTPS asset host and allowed directory, supply the
+page metadata `chat-help-asset-base`. For example, **only after replacing this
+example with the approved location**:
+
+```html
+<meta name="chat-help-asset-base" content="https://assets.example.invalid/help/tags/">
+```
+
+An origin-only configuration uses the observed `/help/tags/` directory. A full
+directory URL must end with `/`; relative filenames resolve inside it, while
+root-relative paths retain their path on that approved origin. Both relative
+and absolute image URLs must remain within the configured origin and directory.
+HTTP, protocol-relative URLs, embedded credentials, query/fragment parameters,
+path escapes, ambiguous encoded separators and invalid URL syntax are rejected.
+There is no localhost/HTTP exception. The backend payload cannot configure its
+own asset base.
+
+Images use normal lazy `<img>` elements, anonymous CORS, no-referrer, reserved
+layout space, and one-shot load-error fallbacks. The configured asset host must
+allow anonymous cross-origin image requests if external; otherwise instructions
+remain available with a load-failure notice. No chat headers or credential query
+parameters are added to media requests. SVG references are never fetched and
+injected as markup. This stricter policy applies to structured help assets;
+existing Markdown/A2A image attachments retain their previous renderer.
+
+Video handling is deliberately **external links only**, as approved. Valid
+11-character YouTube IDs create `https://www.youtube.com/watch?v=...` links
+labelled with the title and new-tab behaviour, with `noopener noreferrer`.
+No iframe, player, autoplay, thumbnail, or YouTube request is created by chat,
+regardless of the demo consent state. Video availability is explicitly
+unverified. The existing default-declined consent stub is unchanged.
+
+### Rollback
+
+The pre-structured-response baseline is Git commit
+`db372e5156b8829f3d552bc21b95830b224d1b09`. A separate verified archive of the
+existing chat, image renderer, style lab, and related manifests/documentation was
+saved outside the served repository before implementation.
+
+To use that archive, stop the style lab, preserve any newer work first, and
+extract it from the repository root with
+`tar -xzf /absolute/path/to/chat-before-structured-responses-20261021-1130.tar.gz`.
+This restores the archived files; it does not remove newly added files.
+The new `scripts/chat-stream.js`, `scripts/chat-tools.js` and
+`scripts/chat-help.js` may then be removed
+if no later work uses them. Restart the style lab and refresh the browser.
+Do not use a blanket repository reset that discards unrelated work.
+
+A second verified snapshot, `chat-before-help-media-20261021-1153.tar.gz`, preserves
+the route-enabled implementation immediately before help-media support.
+Restoring that archive keeps the maps/follow-ups; only `scripts/chat-help.js`
+is new relative to that snapshot and may be removed if unused.
 
 ## Environments
 - Preview: https://main--tu-chat-demo--20xdev.aem.page/
@@ -114,11 +231,21 @@ checklist, missing-image fallback, slow streaming, and a failed request that
 succeeds on retry. **Image files, base64, SVG + icons** also exercises mixed
 text/file parts and intentional invalid attachments. All values are fictional.
 Do not enter real personal or payment information.
+The structured-route scenarios exercise status-message route data, replacement
+answer artifacts, repeated tool results, follow-ups, invalid geometry, premature
+stream closure and JSON-RPC errors. Normal fixtures end with an A2A completed
+status, not a custom `[DONE]` marker. Route coordinates are illustrative, not
+real routing advice. These scenarios load the approved external map tiles.
+Help scenarios cover instructions/video references with unconfigured images,
+`found: false`, invalid entries, and text-only mentions that must not fabricate
+media. The referenced video is not fetched or verified by the lab.
 
 After restarting the style lab, open
 **http://localhost:3100/__mock/renderer-tests.html** for repeatable renderer checks.
-They use the application renderer and the same Markdown/sanitiser libraries, not
-the live chat API. To run a separate lab instance without stopping an existing
+They check the application renderer, request/SSE adapter, route validation,
+follow-ups, help-card state, trusted media URLs, and external-only video behaviour
+using fixtures, not the live chat API.
+To run a separate lab instance without stopping an existing
 one, use `CHAT_STYLE_LAB_PORT=3101 npm run dev:chat` and open the corresponding port.
 
 The lab binds to loopback only. It reads pages from the local AEM proxy, replaces

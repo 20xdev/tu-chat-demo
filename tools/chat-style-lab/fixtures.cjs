@@ -121,5 +121,106 @@ exports.fixtures.media = [
   { kind: 'file', file: { name: 'Invalid SVG', mimeType: 'image/svg+xml', bytes: Buffer.from('<svg>broken').toString('base64') } },
   { kind: 'file', file: { name: 'Non-image file', mimeType: 'application/pdf', uri: '/__mock/document.pdf' } },
   { kind: 'data', data: { icon: 'car' } },
-  { kind: 'text', text: '\n\nThe unsupported data part above is intentional. Arbitrary icon names or card schemas are not interpreted.\n\n[Written journey information](/using-toll-roads)' },
+  { kind: 'text', text: '\n\nThe unknown data part is intentionally ignored. Arbitrary icon names or card schemas are not interpreted.\n\n[Written journey information](/using-toll-roads)' },
 ];
+
+exports.routePlan = {
+  ok: true,
+  origin: { label: 'Flinders Street (demo)', position: [144.96512, -37.8182] },
+  destination: { label: 'Melbourne Airport (demo)', position: [144.85017, -37.67137] },
+  distance_km: 24.7,
+  duration_minutes: 23,
+  tolled_distance_km: 9.3,
+  untolled_distance_km: 15.4,
+  currency: 'AUD',
+  toll_total: 6.82,
+  segments: [
+    { tolled: false, points: [[144.96512, -37.8182], [144.9601, -37.8175], [144.951, -37.814]] },
+    {
+      tolled: true,
+      points: [[144.9333, -37.80943], [144.9301, -37.80947], [144.914, -37.788], [144.9, -37.75]],
+    },
+    { tolled: false, points: [[144.875, -37.704], [144.862, -37.686], [144.85017, -37.67137]] },
+  ],
+  assumptions: [
+    'LOCAL DEMO: illustrative geometry and fictional estimates, not routing advice.',
+    'Priced for a car with a Linkt tag',
+    'Published toll rates, not a live quote',
+    'Untagged trips may attract additional fees',
+  ],
+};
+
+const toolPart = (kind, value) => ({
+  kind: 'data', data: { toolData: { kind, toolUseId: `demo-${kind}`, value } },
+});
+const followUps = toolPart('followUps', {
+  options: ["What if I don't have a tag?", 'Check tolls on another route', 'What roads are tolled?'],
+});
+const completed = { kind: 'status-update', status: { state: 'completed' }, final: true };
+const routeEvents = (value) => [
+  { kind: 'task', status: { state: 'working' }, history: [{ role: 'user', parts: [{ kind: 'text', text: 'User history must not appear as an assistant reply.' }] }] },
+  { kind: 'status-update', status: { state: 'working', message: { role: 'agent', parts: [{ kind: 'text', text: 'Preparing your sample route...' }, { kind: 'data', data: { toolEvent: { phase: 'start' } } }] } } },
+  { kind: 'status-update', status: { state: 'working', message: { role: 'agent', parts: [toolPart('routePlan', value), followUps] } } },
+  {
+    kind: 'artifact-update', append: false, lastChunk: true, artifact: { artifactId: 'answer', parts: [{ kind: 'text', text: `## Your sample journey\n\n${notice}\n\nThe returned route and its assumptions appear below. This is an illustrative fixture, not live navigation.` }] },
+  },
+  { kind: 'status-update', status: { state: 'working', message: { role: 'agent', parts: [toolPart('routePlan', value), followUps, { kind: 'data', data: { toolEvent: { phase: 'end' } } }] } } },
+  completed,
+].map((result) => ({ result }));
+
+exports.eventFixtures = {
+  route: routeEvents(exports.routePlan),
+  'route-invalid': routeEvents({
+    ...exports.routePlan,
+    segments: [{ tolled: true, points: [[null, -37.8], [144.9, -37.7]] }],
+  }),
+  interrupted: [
+    { result: { kind: 'artifact-update', artifact: { artifactId: 'partial', parts: [{ kind: 'text', text: 'This partial answer should remain visible when the stream closes without completion.' }] } } },
+  ],
+  'rpc-error': [
+    { result: { kind: 'status-update', status: { state: 'working', message: { parts: [{ kind: 'text', text: 'This partial answer precedes a deliberate JSON-RPC error.' }] } } } },
+    { error: { code: -32603, message: 'Intentional local error after partial content' } },
+  ],
+};
+
+exports.helpMedia = {
+  found: true,
+  topic: 'install',
+  title: 'Installing your tag',
+  steps: [
+    'Slide the tag into its holder until it clicks. Leave the backing on the adhesive for now.',
+    'Try the position before sticking: high and central behind the rear-view mirror, with at least 7cm clear of other objects. Mini tags sit horizontally, small tags vertically.',
+    'Clean the spot with a cloth and let it dry, peel off the backing, and press the holder firmly against the glass for 30 seconds.',
+    "Drive as normal. The tag beeps at each toll point, and your account detects it automatically - there's nothing to set up online.",
+  ],
+  media: [
+    {
+      type: 'image', src: '/help/tags/D-type-tag-insert-car.svg', alt: 'A mini tag sliding into its holder', caption: 'Mini tag',
+    },
+    {
+      type: 'image', src: '/help/tags/C-type-tag-insert-car.svg', alt: 'A small tag sliding into its holder', caption: 'Small tag',
+    },
+    { type: 'video', youtubeId: '7sT7hg396EQ', title: 'How to install a tag in your vehicle' },
+  ],
+};
+const helpEvents = (value) => [
+  { kind: 'status-update', status: { state: 'working', message: { parts: [{ kind: 'text', text: 'Preparing help instructions...' }] } } },
+  { kind: 'status-update', status: { state: 'working', message: { parts: [toolPart('helpMedia', value), followUps] } } },
+  { kind: 'artifact-update', lastChunk: true, artifact: { artifactId: 'help-answer', parts: [{ kind: 'text', text: `## Installation help\n\n${notice}\n\nThese are sample instructions from the supplied response contract. Illustration hosting is not yet confirmed; video availability is unverified.` }] } },
+  { kind: 'status-update', status: { state: 'working', message: { parts: [toolPart('helpMedia', value)] } } },
+  completed,
+].map((result) => ({ result }));
+exports.eventFixtures.help = helpEvents(exports.helpMedia);
+exports.eventFixtures['help-not-found'] = helpEvents({ ...exports.helpMedia, found: false });
+exports.eventFixtures['help-invalid'] = helpEvents({
+  found: true,
+  title: 'Help with invalid references (local fixture)',
+  steps: ['A valid written instruction remains visible.', null, 42],
+  media: [
+    null,
+    { type: 'image', src: '//unapproved.invalid/image.svg', caption: 'Blocked reference' },
+    { type: 'video', youtubeId: '../invalid', title: 'Invalid video' },
+    { type: 'unknown', src: '/do-not-render-as-html' },
+  ],
+});
+exports.fixtures['help-text-only'] = 'The answer mentions installation pictures and a video, but includes no structured helpMedia result. No help card or video should be fabricated.';

@@ -1,7 +1,7 @@
 const http = require('node:http');
 const fs = require('node:fs/promises');
 const path = require('node:path');
-const { fixtures, routeImage } = require('./fixtures.cjs');
+const { eventFixtures, fixtures, routeImage } = require('./fixtures.cjs');
 
 const upstream = 'http://localhost:3000';
 const port = Number(process.env.CHAT_STYLE_LAB_PORT || 3100);
@@ -47,7 +47,7 @@ async function mockResponse(req, res) {
     if (/pass/i.test(text)) scenario = 'compare';
     else if (/notice/i.test(text)) scenario = 'notice';
   }
-  if (!Object.hasOwn(fixtures, scenario)) {
+  if (!Object.hasOwn(fixtures, scenario) && !Object.hasOwn(eventFixtures, scenario)) {
     send(res, 400, 'text/plain', 'Unknown mock scenario');
     return;
   }
@@ -65,27 +65,40 @@ async function mockResponse(req, res) {
   });
   res.flushHeaders();
   const fixture = fixtures[scenario];
-  const responseParts = typeof fixture === 'string' ? [{ kind: 'text', text: fixture }] : fixture;
+  const responseParts = typeof fixture === 'string' ? [{ kind: 'text', text: fixture }] : (fixture || []);
   const parts = responseParts.flatMap((part) => (part.kind === 'text'
-    ? part.text.match(/[\s\S]{1,100}/g).map((textChunk) => ({ kind: 'text', text: textChunk }))
+    ? (part.text.match(/[\s\S]{1,100}/g) || []).map((textChunk) => ({ kind: 'text', text: textChunk }))
     : [part]));
+  const events = eventFixtures[scenario] || [
+    ...parts.map((part, partIndex) => ({
+      result: {
+        kind: 'artifact-update',
+        append: partIndex > 0,
+        lastChunk: partIndex === parts.length - 1,
+        artifact: { artifactId: 'local-demo', parts: [part] },
+      },
+    })),
+    { result: { kind: 'status-update', status: { state: 'completed' }, final: true } },
+  ];
   let index = 0;
   let timer;
   function next() {
     if (res.destroyed) return;
-    if (index >= parts.length) {
-      res.end('data: [DONE]\n\n');
+    if (index >= events.length) {
+      res.end();
       return;
     }
-    const result = {
-      kind: 'artifact-update',
-      append: index > 0,
-      artifact: {
-        artifactId: 'local-demo',
-        parts: [parts[index]],
-      },
-    };
-    res.write(`data: ${JSON.stringify({ jsonrpc: '2.0', id: data.id, result })}\n\n`);
+    const event = events[index];
+    const envelope = { jsonrpc: '2.0', id: data.id, ...event };
+    if (event.result) {
+      const taskId = `local-${data.params.message.messageId}`;
+      envelope.result = {
+        ...event.result,
+        contextId: data.params.message.contextId,
+        ...(event.result.kind === 'task' ? { id: taskId } : { taskId }),
+      };
+    }
+    res.write(`data: ${JSON.stringify(envelope)}\n\n`);
     index += 1;
     timer = setTimeout(next, 90);
   }
@@ -141,12 +154,13 @@ const server = http.createServer(async (req, res) => {
     let payload = Buffer.from(await response.arrayBuffer());
     if (url.pathname === '/blocks/chat/chat.js') {
       const source = payload.toString('utf8');
-      if (!source.includes(liveAPI)) {
+      const authCall = 'createChatRequest(userInput, turn.contextId, chatAccessToken)';
+      if (!source.includes(liveAPI) || !source.includes(authCall)) {
         send(res, 502, 'text/plain', 'Cannot safely replace the chat endpoint; refusing to load the chat module.');
         return;
       }
       payload = Buffer.from(source.replaceAll(liveAPI, '/__mock/a2a')
-        .replace("'X-Chat-Access-Token': chatAccessToken", "'X-Chat-Access-Token': 'local-mock-only'"));
+        .replace(authCall, "createChatRequest(userInput, turn.contextId, 'local-mock-only')"));
     }
     if (type.includes('text/html') && response.ok) {
       const source = payload.toString('utf8');
