@@ -815,6 +815,29 @@ const cases = [
     );
     view.dispose();
   }],
+  ['Unavailable trip cards show a neutral result alongside empty trips and follow-ups', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const tools = new Map([
+      ['tripCard:missing', { kind: 'tripCard', value: { found: false } }],
+      ['tripList:empty', { kind: 'tripList', value: { trips: [] } }],
+      ['followUps:dispute', { kind: 'followUps', value: { options: ['Check my dispute status'] } }],
+    ]);
+    view.update(tools);
+    const card = host.querySelector('.chat-trip-unavailable');
+    view.update(tools);
+    assert(
+      host.querySelectorAll('.chat-trip-unavailable').length === 1
+      && host.querySelector('.chat-trip-unavailable') === card
+      && card.textContent.includes('Trip details could not be found')
+      && host.textContent.includes('No trips were returned.')
+      && host.querySelector('button').textContent === 'Check my dispute status'
+      && !host.querySelector('.chat-tool-fallback'),
+      'Unavailable trip duplicated, warned, hid the empty list or lost follow-ups',
+    );
+    view.dispose();
+    assert(!host.hasChildNodes(), 'Unavailable trip survived disposal');
+  }],
   ['Follow-up options are validated and deduplicated', () => {
     assert(followUpOptions({ options: [' Ask ', '', null, 'Ask', 42, 'Other'] }).join() === 'Ask,Other', 'Follow-up validation failed');
   }],
@@ -1522,6 +1545,25 @@ const cases = [
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
+        if (mode === 'trip-unavailable') {
+          const card = {
+            type: 'CUSTOM', name: 'tripCard', value: { toolCallId: 'aws-trip-missing', found: false },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-trip-missing', toolCallName: 'explain_trip' },
+            card,
+            card,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-trip-missing' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Looking for your demo trip.' },
+            { type: 'CUSTOM', name: 'tripList', value: { toolCallId: 'aws-empty-trips', trips: [] } },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'Demo trip unavailable.' },
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-dispute', toolCallName: 'handle_dispute' },
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-dispute' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'c', delta: 'Existing fictional dispute DEMO-CASE.' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'dispute-followups', options: ['Check my dispute status', 'Dispute another trip', 'Back to my statement'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -1801,6 +1843,41 @@ const cases = [
         !outcome.isConnected && outcomeImages.every((image) => !image.hasAttribute('src')),
         'Reset retained outcome assets',
       );
+      mode = 'trip-unavailable';
+      await submit('Explain my fictional missing trip');
+      const unavailableTrip = doc.querySelector('.chat-trip-unavailable');
+      const unavailableAnswer = unavailableTrip?.closest('.chat-message-received');
+      assert(
+        unavailableTrip && doc.querySelectorAll('.chat-trip-unavailable').length === 1
+        && !doc.querySelector('.chat-turn-status:not([hidden]),.chat-tool-fallback')
+        && ['Looking for your demo trip.', 'Demo trip unavailable.', 'Existing fictional dispute DEMO-CASE.', 'No trips were returned.']
+          .every((content) => unavailableAnswer.textContent.includes(content))
+        && doc.querySelectorAll('.chat-followup').length === 3,
+        'Unavailable trip showed warnings, duplicated or lost text/list/dispute choices',
+      );
+      const unavailableWidth = frame.style.width;
+      frame.style.width = '320px';
+      win.dispatchEvent(new win.Event('resize'));
+      assert(
+        unavailableTrip.scrollWidth <= unavailableTrip.clientWidth
+        && unavailableTrip.getBoundingClientRect().right <= win.innerWidth,
+        'Unavailable trip overflowed on mobile',
+      );
+      frame.style.width = unavailableWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const unavailableRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelector('.chat-followup').click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'dispute-status follow-up');
+      assert(
+        requests.at(-1).request.messages[0].content === 'Check my dispute status'
+        && requests.at(-1).request.threadId === unavailableRequest.request.threadId
+        && requests.at(-1).session === unavailableRequest.session && unavailableTrip.isConnected,
+        'Dispute follow-up lost text, session, conversation or result',
+      );
+      doc.querySelector('.chat-reset').click();
+      assert(!unavailableTrip.isConnected, 'Reset retained the unavailable trip');
       mode = 'trip-list';
       doc.querySelector('.chat-reset').click();
       await submit('Show my last ten trips');

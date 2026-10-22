@@ -679,6 +679,17 @@ export default function createToolViews(
         if (tool.kind === 'routePlan') dispose = routeView(tool.value, host);
         if (tool.kind === 'statementCard') statementView(tool.value, host);
         if (tool.kind === 'tripList') tripListView(tool.value, host);
+        if (tool.kind === 'tripCard') {
+          host.classList.add('chat-trip-unavailable');
+          host.append(element('h3', '', 'Trip details'));
+          host.append(element(
+            'p',
+            tool.value?.found === false ? '' : 'chat-tool-fallback',
+            tool.value?.found === false
+              ? 'Trip details could not be found for this request.'
+              : 'The supplied trip details are invalid or not yet supported.',
+          ));
+        }
         if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase, addOptions);
         if (tool.kind === 'followUps') {
           host.classList.add('chat-followups');

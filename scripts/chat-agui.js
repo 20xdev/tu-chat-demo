@@ -105,7 +105,8 @@ export function applyAGUIEvent(state, event) {
       if (!identifier(event.name) || !Object.hasOwn(event, 'value')) {
         throw new Error('The chat stream contained an invalid custom event.');
       }
-      if (['routePlan', 'statementCard', 'tripList', 'helpMedia', 'followUps'].includes(event.name)) {
+      if (['routePlan', 'statementCard', 'tripList', 'helpMedia', 'followUps'].includes(event.name)
+        || (event.name === 'tripCard' && event.value?.found === false)) {
         if (!identifier(event.value?.toolCallId)) {
           throw new Error('Interactive chat content is missing its tool call ID.');
         }

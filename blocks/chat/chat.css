@@ -754,6 +754,13 @@
   margin-top: 8px;
 }
 
+.chat .chat-trip-unavailable {
+  padding: 16px;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  background: #f4f7f5;
+}
+
 .chat .chat-trip-list {
   box-sizing: border-box;
   width: 100%;

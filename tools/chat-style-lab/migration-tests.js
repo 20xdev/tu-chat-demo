@@ -464,6 +464,50 @@ const cases = [
       'Trip-only completion lost data, warned, or consumed unknown-event retention',
     );
   }],
+  ['Unavailable tripCard results retain all text, empty trips and dispute follow-ups', async () => {
+    const state = createAGUITurn('thread');
+    const card = { type: 'CUSTOM', name: 'tripCard', value: { toolCallId: 'trip-missing', found: false } };
+    applyAGUIEvent(state, card);
+    const first = state.tools.get('tripCard:trip-missing');
+    applyAGUIEvent(state, JSON.parse(JSON.stringify(card)));
+    assert(state.tools.get('tripCard:trip-missing') === first, 'Unavailable trip card was duplicated');
+    await readAGUIStream(stream([
+      { type: 'TOOL_CALL_START', toolCallId: 'trip-missing', toolCallName: 'explain_trip' },
+      card,
+      { type: 'TOOL_CALL_END', toolCallId: 'trip-missing' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Looking for your demo trip.' },
+      { type: 'CUSTOM', name: 'tripList', value: { toolCallId: 'empty-trips', trips: [] } },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'b', delta: 'Demo trip unavailable.' },
+      { type: 'TOOL_CALL_START', toolCallId: 'dispute', toolCallName: 'handle_dispute' },
+      { type: 'TOOL_CALL_END', toolCallId: 'dispute' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'c', delta: 'Existing fictional dispute DEMO-CASE.' },
+      { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'dispute-followups', options: ['Check my dispute status', 'Dispute another trip', 'Back to my statement'] } },
+      { type: 'RUN_FINISHED' },
+    ]), state, () => {});
+    assert(
+      state.outcome === 'completed' && !aguiNotice(state) && state.tools.size === 3
+      && state.messages.size === 3 && !state.customEvents.length && state.customBytes === 0
+      && aguiAnswerParts(state)[0].text === 'Looking for your demo trip.\n\nDemo trip unavailable.\n\nExisting fictional dispute DEMO-CASE.',
+      'Valid unavailable trip was unsupported, discarded content or retained completed progress',
+    );
+    await Promise.all([{}, { toolCallId: '' }, { toolCallId: 42 }].map((value) => rejects(
+      () => readAGUIStream(stream([{ ...card, value: { ...value, found: false } }]), createAGUITurn('thread'), () => {}),
+      'tool call ID',
+    )));
+  }],
+  ['Unverified successful or malformed tripCard shapes remain explicitly unsupported', () => {
+    [true, 'false', undefined, null, 0].forEach((found) => {
+      const state = createAGUITurn('thread');
+      applyAGUIEvent(state, {
+        type: 'CUSTOM', name: 'tripCard', value: { toolCallId: 'unverified', found },
+      });
+      assert(
+        !state.tools.size && state.customEvents.length === 1
+        && aguiNotice(state).includes('not yet supported'),
+        'An unverified trip-card shape was silently accepted or lost',
+      );
+    });
+  }],
   ['Observed helpMedia events preserve data, upsert and complete without notices', async () => {
     const state = createAGUITurn('thread');
     const value = {

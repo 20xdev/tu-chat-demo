@@ -178,6 +178,13 @@ Cards upsert by event name and `value.toolCallId`; identical repeated results ke
 their existing views. Tool completion and later text do not remove the map or
 suggestions. The unsupported-content notice appears only for unrecognized custom
 names, not `routePlan`, `statementCard`, `tripList`, `helpMedia` or `followUps`.
+The observed `tripCard` variant with `found: false` is also recognized and
+renders a neutral trip-not-found card without an unsupported-content warning.
+It still requires a valid `toolCallId` and upserts by that ID. A successful
+`tripCard` payload has not yet been supplied: other trip-card shapes remain
+explicitly unsupported rather than guessing a schema or discarding their data.
+An empty `tripList` remains a valid no-trips result. Neither result removes
+assistant messages, later dispute responses or follow-up choices.
 AG-UI `helpMedia` preserves the supplied title, ordered instructions, illustration
 order, alt text, captions and video title/link using the existing asset allowlist
 and explicit invalid-data/load-error fallbacks. `topic` identifies the help subject;
