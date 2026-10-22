@@ -131,6 +131,19 @@ const sampleHelp = {
     { type: 'video', youtubeId: '7sT7hg396EQ', title: 'Tag installation video' },
   ],
 };
+const bundledHelp = {
+  ...sampleHelp,
+  topic: 'install',
+  media: [
+    ...['insert', 'position', 'angle'].flatMap((stage) => ['D', 'C'].map((tag) => ({
+      type: 'image',
+      src: `/help/tags/${tag}-type-tag-${stage}-car.svg`,
+      alt: `${tag}-type tag: ${stage}`,
+      caption: `${tag}-type tag: ${stage}`,
+    }))),
+    sampleHelp.media[2],
+  ],
+};
 function helpViews(value, base = '') {
   const host = document.createElement('div');
   const view = createToolViews(host, () => {}, base);
@@ -862,13 +875,8 @@ const cases = [
     document.body.append(host);
     const view = createToolViews(host, () => {});
     try {
-      const media = ['C', 'D'].flatMap((tag) => ['insert', 'position', 'angle'].map((stage) => ({
-        type: 'image',
-        src: `/help/tags/${tag}-type-tag-${stage}-car.svg`,
-        alt: `${tag}-type tag: ${stage}`,
-      })));
       view.update(new Map([['helpMedia:bundled', {
-        kind: 'helpMedia', value: { ...sampleHelp, media },
+        kind: 'helpMedia', value: bundledHelp,
       }]]));
       const images = [...host.querySelectorAll('img')];
       assert(images.length === 6, 'Default configuration did not create six illustrations');
@@ -1196,7 +1204,7 @@ const cases = [
           };
           return Promise.resolve(response);
         }
-        // Synthetic CUSTOM values do not establish an AWS media mapping.
+        // Arbitrary CUSTOM names remain unsupported even when their values resemble known tools.
         let events = mode === 'structured' ? [
           { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Final answer' },
           { type: 'CUSTOM', name: 'synthetic-unmapped', value: { sampleHelp } },
@@ -1241,6 +1249,20 @@ const cases = [
             { type: 'TOOL_CALL_END', toolCallId: 'aws-trips' },
             { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Here are your fictional trips.' },
             { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'trip-followups', options: ['Check my tag', 'Order a replacement', 'Dispute the video matching fees'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
+        if (mode === 'help-media') {
+          const helpEvent = {
+            type: 'CUSTOM', name: 'helpMedia', value: { ...bundledHelp, toolCallId: 'aws-help' },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-help', toolCallName: 'tag_how_to' },
+            helpEvent,
+            helpEvent,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-help' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Your demo tag instructions.' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'help-followups', options: ['Check my tag', "Tag isn't beeping", 'Metallic windscreen'] } },
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
@@ -1370,6 +1392,67 @@ const cases = [
         .getAttribute('aria-busy') === 'false', 'progress failure');
       assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Failed tool progress stayed visible');
       assert(!doc.querySelector('.chat-loading-status'), 'Failure retained a loading indicator');
+      mode = 'help-media';
+      doc.querySelector('.chat-reset').click();
+      await submit('Show demo tag installation help');
+      const help = doc.querySelector('.chat-help');
+      assert(
+        help && doc.querySelectorAll('.chat-help').length === 1
+        && !doc.querySelector('.chat-turn-status:not([hidden])'),
+        'Help media was missing, duplicated or showed an unsupported notice',
+      );
+      assert(
+        [...help.querySelectorAll('.chat-help-steps li')]
+          .every((step, index) => step.textContent === bundledHelp.steps[index])
+        && help.querySelectorAll('.chat-help-steps li').length === bundledHelp.steps.length
+        && help.closest('.chat-message-received').textContent.includes('Your demo tag instructions.'),
+        'Help instructions or assistant text were lost',
+      );
+      const helpImages = [...help.querySelectorAll('.chat-help-illustration')];
+      helpImages.forEach((image) => { image.loading = 'eager'; });
+      await waitFor(
+        () => helpImages.length === 6
+          && helpImages.every((image) => image.complete && image.naturalWidth > 0),
+        'six AG-UI help illustrations',
+      );
+      assert(
+        helpImages.every((image, index) => new URL(image.src).pathname
+          === bundledHelp.media[index].src && image.alt === bundledHelp.media[index].alt)
+        && [...help.querySelectorAll('figcaption')]
+          .every((caption, index) => caption.textContent === bundledHelp.media[index].caption)
+        && !help.querySelector('.chat-tool-fallback'),
+        'Help illustrations lost their order, alt text, captions or asset location',
+      );
+      assert(
+        help.querySelector('.chat-help-video-link')?.href === 'https://www.youtube.com/watch?v=7sT7hg396EQ'
+        && !help.querySelector('iframe') && doc.querySelectorAll('.chat-followup').length === 3,
+        'Help video or follow-ups were missing, or an unapproved player loaded',
+      );
+      const helpWidth = frame.style.width;
+      [320, 375, 390].forEach((width) => {
+        frame.style.width = `${width}px`;
+        win.dispatchEvent(new win.Event('resize'));
+        assert(
+          help.scrollWidth <= help.clientWidth
+          && help.getBoundingClientRect().right <= win.innerWidth,
+          `Help media overflowed at ${width}px`,
+        );
+      });
+      frame.style.width = helpWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const helpRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelector('.chat-followup').click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'help-media follow-up request');
+      assert(
+        requests.at(-1).request.messages[0].content === 'Check my tag'
+        && requests.at(-1).request.threadId === helpRequest.request.threadId
+        && requests.at(-1).session === helpRequest.session && help.isConnected,
+        'Help follow-up lost its text, context or illustrations',
+      );
+      doc.querySelector('.chat-reset').click();
+      assert(!help.isConnected && helpImages.every((image) => !image.hasAttribute('src')), 'Reset retained help assets');
       mode = 'trip-list';
       doc.querySelector('.chat-reset').click();
       await submit('Show my last ten trips');

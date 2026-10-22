@@ -464,6 +464,33 @@ const cases = [
       'Trip-only completion lost data, warned, or consumed unknown-event retention',
     );
   }],
+  ['Observed helpMedia events preserve data, upsert and complete without notices', async () => {
+    const state = createAGUITurn('thread');
+    const value = {
+      toolCallId: 'help-1',
+      found: true,
+      topic: 'install',
+      title: 'Demo tag help',
+      steps: ['Demo first step', 'Demo second step'],
+      media: [{ type: 'image', src: '/help/tags/D-type-tag-insert-car.svg', alt: 'Demo tag' }],
+    };
+    const event = { type: 'CUSTOM', name: 'helpMedia', value };
+    applyAGUIEvent(state, event);
+    const first = state.tools.get('helpMedia:help-1');
+    applyAGUIEvent(state, JSON.parse(JSON.stringify(event)));
+    assert(state.tools.get('helpMedia:help-1') === first, 'Repeated help recreated its view');
+    await readAGUIStream(stream([
+      { type: 'TOOL_CALL_START', toolCallId: 'help-1', toolCallName: 'tag_how_to' },
+      event,
+      { type: 'TOOL_CALL_END', toolCallId: 'help-1' },
+    ]), state, () => {});
+    assert(
+      state.outcome === 'completed' && !aguiNotice(state) && state.tools.size === 1
+      && JSON.stringify(state.tools.get('helpMedia:help-1').value) === JSON.stringify(value)
+      && !state.customEvents.length && state.customBytes === 0,
+      'Help-only completion lost data, warned, or consumed unknown-event retention',
+    );
+  }],
   ['AG-UI tool-only clean EOF retains recognized interactive content', async () => {
     const state = createAGUITurn('thread');
     await readAGUIStream(stream([
@@ -475,7 +502,7 @@ const cases = [
     );
   }],
   ['AG-UI recognized custom events require explicit tool-call identity', async () => {
-    await Promise.all(['routePlan', 'statementCard', 'tripList', 'followUps'].flatMap((name) => [
+    await Promise.all(['routePlan', 'statementCard', 'tripList', 'helpMedia', 'followUps'].flatMap((name) => [
       null, {}, { toolCallId: '' }, { toolCallId: 42 },
     ].map((value) => rejects(() => readAGUIStream(stream([{ type: 'CUSTOM', name, value }]), createAGUITurn('thread'), () => {}), 'tool call ID'))));
   }],

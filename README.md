@@ -100,8 +100,9 @@ tool completion and later text do not remove them. Supported events do not show
 the unsupported-content notice. Unknown CUSTOM names are held only in bounded
 per-turn memory (20 events and 64 KiB), never logged or dumped into HTML, and
 produce one unsupported-content notice per assistant turn. Truncation is disclosed.
-Reset/disposal drops retained events and interactive views. AG-UI help-media
-mapping remains unverified; the existing A2A help-media support is unchanged.
+Reset/disposal drops retained events and interactive views. Observed `helpMedia`
+events also reuse the existing help renderer for instructions, illustrations
+and external video links.
 
 External prerequisites remain Cognito public-client code/PKCE registration,
 the exact callback origin, supported refresh grants, a registered Hosted UI
@@ -168,6 +169,7 @@ separately from the legacy A2A adapter. These custom events feed the same render
 {"type":"CUSTOM","name":"routePlan","value":{"toolCallId":"route-1","ok":true}}
 {"type":"CUSTOM","name":"statementCard","value":{"toolCallId":"statement-1","found":true,"statement_id":"DEMO-STATEMENT","statement_date":"2026-09-25"}}
 {"type":"CUSTOM","name":"tripList","value":{"toolCallId":"trips-1","trips":[]}}
+{"type":"CUSTOM","name":"helpMedia","value":{"toolCallId":"help-1","found":true,"topic":"install","title":"Installing your tag","steps":["Returned instruction"],"media":[{"type":"image","src":"/help/tags/D-type-tag-insert-car.svg","alt":"Mini tag"},{"type":"video","youtubeId":"7sT7hg396EQ","title":"Tag installation video"}]}}
 {"type":"CUSTOM","name":"followUps","value":{"toolCallId":"followups-1","options":["Check a different route","Plan another trip"]}}
 ```
 
@@ -175,8 +177,11 @@ The route example is abbreviated and requires the full geometry described below.
 Cards upsert by event name and `value.toolCallId`; identical repeated results keep
 their existing views. Tool completion and later text do not remove the map or
 suggestions. The unsupported-content notice appears only for unrecognized custom
-names, not `routePlan`, `statementCard`, `tripList` or `followUps`. AG-UI help-media mapping remains unverified;
-the existing A2A help-media support is unchanged. The local lab's **AWS AG-UI route
+names, not `routePlan`, `statementCard`, `tripList`, `helpMedia` or `followUps`.
+AG-UI `helpMedia` preserves the supplied title, ordered instructions, illustration
+order, alt text, captions and video title/link using the existing asset allowlist
+and explicit invalid-data/load-error fallbacks. `topic` identifies the help subject;
+it does not change the trusted asset base. The local lab's **AWS AG-UI route
 + follow-ups** scenario exercises the raw event format using fictional demo data.
 The **AWS AG-UI statement + follow-ups** scenario uses fictional statement data;
 no customer attachment is committed to the fixtures.
@@ -291,9 +296,9 @@ of `tag-insert-car.svg`, `tag-position-car.svg`, and `tag-angle-car.svg`.
 **The chat uses the bundled `/help/tags/` directory on its own code origin by
 default.** No metadata is needed for these six illustrations. Deploy the SVG files
 alongside the chat scripts; copying assets locally does not publish them to an
-existing AEM preview/live site. The fixture uses the two image references from
-the supplied abbreviated contract, rather than fabricating the full six-image
-response. Browser regression checks additionally load all six real SVG files.
+existing AEM preview/live site. The legacy fixture uses two image references;
+browser regression checks also replay the observed AG-UI `helpMedia` shape with
+all six real SVG files and a video reference through the production chat flow.
 
 To override the bundled location with a confirmed trusted HTTPS asset host and
 directory, supply page metadata `chat-help-asset-base`. For example,
@@ -417,8 +422,9 @@ All demo values are fictional; do not enter personal or payment information.
 The original A2A fixture endpoint and rich-content fixtures remain available for
 independent adapter/component regression checks, not as a production fallback.
 Those checks cover map geometry, help illustrations, captions, media validation
-and follow-up callbacks. The AG-UI route fixture follows the supplied AWS contract
-but does not establish an AG-UI help-media schema. The referenced video is not
+and follow-up callbacks. AG-UI integration checks cover the supplied AWS route
+and help-media contracts, including all six local illustrations, mobile layout,
+deduplication, follow-up context and reset cleanup. The referenced video is not
 fetched or verified.
 
 After restarting the style lab, open
