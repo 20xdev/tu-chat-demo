@@ -577,7 +577,7 @@ const cases = [
     const view = createToolViews(host, () => {});
     view.update(new Map([['statement:s', { kind: 'statementCard', value: sampleStatement }]]));
     const card = host.querySelector('.chat-statement');
-    const facts = [...card.querySelectorAll('.chat-statement-summary:first-of-type dt')]
+    const facts = [...card.querySelectorAll('.chat-statement-summary:not(.chat-statement-tags) dt')]
       .map((label) => [label.textContent, label.nextElementSibling.textContent]);
     const factMap = new Map(facts);
     assert(
@@ -640,6 +640,27 @@ const cases = [
     );
     view.dispose();
   }],
+  ['Statement hero uses the supplied balance or total without guessing a payment state', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const update = (value) => view.update(new Map([['statement:s', { kind: 'statementCard', value }]]));
+    update({ ...sampleStatement, closing_balance: { amount_aud: 0, position: 'credit' }, status: 'Paid' });
+    assert(
+      host.querySelector('.chat-statement-balance-amount').textContent === '$0.00'
+      && host.querySelector('.chat-statement-position').textContent.includes('credit')
+      && host.querySelector('.chat-statement-status').dataset.status === 'paid',
+      'Zero balance, credit position or supplied status was replaced with a due amount',
+    );
+    update({ ...sampleStatement, closing_balance: undefined });
+    assert(
+      host.querySelector('.chat-statement-primary dt').textContent === 'Total charged'
+      && host.querySelector('.chat-statement-primary dd').textContent === '$17.74',
+      'Missing closing balance did not fall back to the explicitly supplied total',
+    );
+    update({ ...sampleStatement, closing_balance: undefined, total_charged_aud: undefined });
+    assert(!host.querySelector('.chat-statement-primary dd'), 'Missing balances became a fabricated zero');
+    view.dispose();
+  }],
   ['Malformed or unavailable statements show explicit fallbacks without inventing amounts', () => {
     const host = document.createElement('div');
     const view = createToolViews(host, () => {});
@@ -666,6 +687,10 @@ const cases = [
       'Malformed values were coerced or silently discarded',
     );
     assert(host.querySelectorAll('tbody tr').length === 1, 'Valid transaction details were discarded with a bad amount');
+    assert(
+      host.querySelector('.chat-statement-entry-count').textContent.includes('1 entry'),
+      'Transaction caption counted rejected rows or used the wrong singular label',
+    );
     view.dispose();
   }],
   ['Follow-up options are validated and deduplicated', () => {
@@ -1260,13 +1285,43 @@ const cases = [
         'Supported statement showed an unsupported or malformed-content warning',
       );
       assert(doc.querySelectorAll('.chat-followup').length === 3, 'Statement follow-up options were lost');
+      const statementTable = statement.querySelector('.chat-statement-lines');
+      const tableRegion = statement.querySelector('.chat-statement-table');
+      assert(
+        win.getComputedStyle(statementTable).display === 'table'
+        && statementTable.getBoundingClientRect().width >= tableRegion.clientWidth * 0.98,
+        'Statement table shrank to content width instead of filling its region',
+      );
+      assert(
+        win.getComputedStyle(statement.querySelector('.chat-statement-balance-amount')).fontSize === '36px'
+        && win.getComputedStyle(statement.querySelector('.chat-statement-badge')).backgroundColor === 'rgb(255, 241, 199)',
+        'Statement balance hierarchy or due-status badge was not styled',
+      );
+      assert(
+        statement.querySelector('.chat-statement-line-metadata').getBoundingClientRect().height < 60
+        && statement.querySelector('tbody tr').getBoundingClientRect().height < 120,
+        'Transaction metadata retained the old tall, single-field-per-line layout',
+      );
+      assert(!statement.querySelector('details,[hidden]'), 'Statement details were collapsed or hidden');
       const statementWidth = frame.style.width;
       frame.style.width = '390px';
       win.dispatchEvent(new win.Event('resize'));
       assert(
         statement.getBoundingClientRect().right <= win.innerWidth
-        && statement.scrollWidth <= statement.clientWidth,
+        && statement.scrollWidth <= statement.clientWidth
+        && statementTable.getBoundingClientRect().width >= tableRegion.clientWidth * 0.98,
         'Statement card overflowed on mobile',
+      );
+      assert(
+        win.getComputedStyle(statement.querySelector('.chat-statement-financials'))
+          .gridTemplateColumns.split(' ').length === 1
+        && win.getComputedStyle(statement.querySelector('.chat-statement-tags'))
+          .gridTemplateColumns.split(' ').length === 1
+        && win.getComputedStyle(statement.querySelector('tbody tr')).display === 'grid'
+        && statement.querySelector('tbody tr td:nth-child(2)').getBoundingClientRect().width
+          > tableRegion.clientWidth * 0.8
+        && statement.querySelectorAll('tbody tr').length === 9,
+        'Mobile statement did not stack its panels/transaction details or retain all rows',
       );
       frame.style.width = statementWidth;
       win.dispatchEvent(new win.Event('resize'));

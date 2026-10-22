@@ -257,51 +257,97 @@ function statementView(value, host) {
   const id = text(value.statement_id);
   const issued = date(value.statement_date);
   if (!id || !issued) incomplete = true;
-  host.append(element('h3', 'chat-statement-title', issued ? `Statement \u00b7 ${issued}` : 'Statement'));
-  if (id) host.append(element('p', 'chat-statement-id', id));
-  host.append(element('p', 'chat-statement-currency', 'All amounts in AUD.'));
-  const summary = element('dl', 'chat-statement-summary');
-  function fact(label, content) {
+  const header = element('div', 'chat-statement-header');
+  const identity = element('div', 'chat-statement-identity');
+  identity.append(element('h3', 'chat-statement-title', issued ? `Statement \u00b7 ${issued}` : 'Statement'));
+  if (id) identity.append(element('p', 'chat-statement-id', id));
+  const status = text(value.status);
+  const statusFacts = element('dl', 'chat-statement-summary chat-statement-status');
+  function fact(list, label, content, className = '') {
     if (content !== null && content !== undefined) {
-      summary.append(element('dt', '', label), element('dd', '', content));
+      const row = element('div', `chat-statement-fact${className ? ` ${className}` : ''}`);
+      row.append(element('dt', 'chat-statement-label', label), element('dd', 'chat-statement-value', content));
+      list.append(row);
+      return row;
     }
+    return null;
   }
+  const statusRow = fact(statusFacts, 'Status', status);
+  statusRow?.lastElementChild.classList.add('chat-statement-badge');
+  if (status) statusFacts.dataset.status = status.toLowerCase();
+  header.append(identity, statusFacts);
+  const hero = element('div', 'chat-statement-hero');
+  const primary = element('dl', 'chat-statement-summary chat-statement-primary');
+  const closing = balance(value.closing_balance);
+  const total = money(value.total_charged_aud);
+  if (closing !== null) {
+    const row = fact(primary, 'Closing balance', closing);
+    const amount = element('span', 'chat-statement-balance-amount', currency.format(value.closing_balance.amount_aud));
+    const position = text(value.closing_balance.position);
+    row.lastElementChild.replaceChildren(amount);
+    if (position) row.lastElementChild.append(element('span', 'chat-statement-position', ` (${position})`));
+  } else {
+    fact(primary, 'Total charged', total);
+  }
+  const balanceBlock = element('div', 'chat-statement-balance');
+  balanceBlock.append(primary, element('p', 'chat-statement-currency', 'All amounts in AUD.'));
+  const schedule = element('dl', 'chat-statement-summary chat-statement-schedule');
   const from = date(value.period?.from);
   const to = date(value.period?.to);
   if (value.period !== undefined && (!from || !to)) incomplete = true;
-  if (from || to) fact('Statement period', [from && `From ${from}`, to && `to ${to}`].filter(Boolean).join(' '));
-  fact('Status', text(value.status));
-  fact('Due date', date(value.due_on));
-  fact('Paid on', date(value.paid_on));
-  fact('Opening balance', balance(value.opening_balance));
-  fact('Payments received', money(value.payments_received_aud));
-  fact('Trip charges', money(value.trip_charges_aud));
-  fact(text(value.fees_and_adjustments_label) || 'Fees and adjustments', money(value.fees_and_adjustments_aud));
-  fact('Video matching fees (reported)', money(value.video_matching_fees_aud));
-  fact('GST included', money(value.gst_included_aud));
-  fact('Total charged', money(value.total_charged_aud));
-  fact('Closing balance', balance(value.closing_balance));
+  fact(schedule, 'Due date', date(value.due_on));
+  fact(schedule, 'Paid on', date(value.paid_on));
+  if (from || to) fact(schedule, 'Statement period', [from && `From ${from}`, to && `to ${to}`].filter(Boolean).join(' '));
+  hero.append(balanceBlock, schedule);
+  const bodyContent = element('div', 'chat-statement-body');
+  const financials = element('div', 'chat-statement-financials');
+  const payments = element('section', 'chat-statement-panel');
+  payments.append(element('h4', 'chat-statement-subtitle', 'Balance & payments'));
+  const balances = element('dl', 'chat-statement-summary');
+  fact(balances, 'Opening balance', balance(value.opening_balance));
+  fact(balances, 'Payments received', money(value.payments_received_aud));
+  fact(balances, 'GST included', money(value.gst_included_aud));
+  payments.append(balances);
+  const chargesPanel = element('section', 'chat-statement-panel');
+  chargesPanel.append(element('h4', 'chat-statement-subtitle', 'Charges this period'));
+  const charges = element('dl', 'chat-statement-summary');
+  fact(charges, 'Trip charges', money(value.trip_charges_aud));
+  fact(charges, text(value.fees_and_adjustments_label) || 'Fees and adjustments', money(value.fees_and_adjustments_aud));
+  fact(charges, 'Video matching fees (reported)', money(value.video_matching_fees_aud));
+  fact(charges, 'Total charged', total, 'chat-statement-fact-total');
   if (value.trip_count !== undefined) {
-    if (Number.isInteger(value.trip_count) && value.trip_count >= 0) fact('Trips', String(value.trip_count));
+    if (Number.isInteger(value.trip_count) && value.trip_count >= 0) fact(balances, 'Trips', String(value.trip_count));
     else incomplete = true;
   }
-  host.append(summary);
+  chargesPanel.append(charges);
+  financials.append(payments, chargesPanel);
+  bodyContent.append(financials);
+  host.append(header, hero, bodyContent);
   if (Array.isArray(value.lines) && value.lines.length) {
     const region = element('div', 'chat-statement-table');
     region.setAttribute('role', 'region');
     region.setAttribute('aria-label', 'Statement transaction details');
     region.tabIndex = 0;
     const table = element('table', 'chat-statement-lines');
-    table.append(element('caption', '', 'Statement transactions'));
-    const head = element('thead');
+    // Explicit roles preserve table semantics when mobile rows use a grid layout.
+    table.setAttribute('role', 'table');
+    const caption = element('caption', 'chat-statement-caption', 'Statement transactions');
+    const entryCount = element('span', 'chat-statement-entry-count');
+    caption.append(entryCount);
+    table.append(caption);
+    const head = element('thead', 'chat-statement-head');
+    head.setAttribute('role', 'rowgroup');
     const headings = element('tr');
+    headings.setAttribute('role', 'row');
     ['Charged', 'Details', 'Amount'].forEach((label) => {
-      const cell = element('th', 'chat-statement-cell', label);
+      const cell = element('th', 'chat-statement-cell chat-statement-table-heading', label);
       cell.scope = 'col';
+      cell.setAttribute('role', 'columnheader');
       headings.append(cell);
     });
     head.append(headings);
-    const body = element('tbody');
+    const body = element('tbody', 'chat-statement-transactions');
+    body.setAttribute('role', 'rowgroup');
     value.lines.forEach((line) => {
       if (!line || typeof line !== 'object' || Array.isArray(line)) {
         incomplete = true;
@@ -311,25 +357,32 @@ function statementView(value, host) {
       const description = text(line.details);
       const amount = money(line.amount_aud);
       if (!charged || !description || amount === null) incomplete = true;
-      const row = element('tr');
-      const details = element('td', 'chat-statement-cell', description || 'Details unavailable');
+      const row = element('tr', 'chat-statement-row');
+      row.setAttribute('role', 'row');
+      const details = element('td', 'chat-statement-cell');
+      details.append(element('span', 'chat-statement-description', description || 'Details unavailable'));
+      const metadata = element('div', 'chat-statement-line-metadata');
       [
         ['Type', line.type], ['Trip ID', line.trip_id], ['Start', line.start],
         ['Finish', line.finish], ['Charged by', line.by],
       ].forEach(([label, input]) => {
         const content = text(input);
-        if (content) details.append(element('small', 'chat-statement-line-meta', `${label}: ${content}`));
+        if (content) metadata.append(element('small', 'chat-statement-line-meta', `${label}: ${content}`));
       });
+      details.append(metadata);
       row.append(
         element('td', 'chat-statement-cell', charged || 'Date unavailable'),
         details,
         element('td', 'chat-statement-cell', amount === null ? 'Amount unavailable' : amount),
       );
+      [...row.children].forEach((cell) => cell.setAttribute('role', 'cell'));
       body.append(row);
     });
+    const count = body.childElementCount;
+    entryCount.textContent = ` \u00b7 ${count} ${count === 1 ? 'entry' : 'entries'}`;
     table.append(head, body);
     region.append(table);
-    host.append(region);
+    bodyContent.append(region);
   } else if (value.lines !== undefined && !Array.isArray(value.lines)) incomplete = true;
   if (value.trip_charges_by_tag !== undefined) {
     if (value.trip_charges_by_tag && typeof value.trip_charges_by_tag === 'object'
@@ -338,11 +391,13 @@ function statementView(value, host) {
       Object.entries(value.trip_charges_by_tag).forEach(([tag, amount]) => {
         const label = text(tag);
         const charge = money(amount);
-        if (label && charge !== null) breakdown.append(element('dt', '', label), element('dd', '', charge));
+        if (label && charge !== null) fact(breakdown, label, charge);
         else incomplete = true;
       });
       if (breakdown.hasChildNodes()) {
-        host.append(element('h4', 'chat-statement-subtitle', 'Trip charges by tag'), breakdown);
+        const section = element('section', 'chat-statement-tag-section');
+        section.append(element('h4', 'chat-statement-subtitle', 'Trip charges by tag'), breakdown);
+        bodyContent.append(section);
       }
     } else incomplete = true;
   }
@@ -352,10 +407,14 @@ function statementView(value, host) {
       const note = text(input);
       if (note) notes.append(element('li', '', note));
     });
-    if (notes.hasChildNodes()) host.append(element('h4', 'chat-statement-subtitle', 'Statement notes'), notes);
+    if (notes.hasChildNodes()) {
+      const section = element('section', 'chat-statement-notes-panel');
+      section.append(element('h4', 'chat-statement-subtitle', 'Statement notes'), notes);
+      bodyContent.append(section);
+    }
   } else if (value.notes !== undefined) incomplete = true;
   if (incomplete) {
-    host.append(element('p', 'chat-tool-fallback', 'Some statement details could not be displayed because the supplied data is incomplete or invalid.'));
+    bodyContent.append(element('p', 'chat-tool-fallback', 'Some statement details could not be displayed because the supplied data is incomplete or invalid.'));
   }
 }
 

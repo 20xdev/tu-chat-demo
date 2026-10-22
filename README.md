@@ -191,6 +191,14 @@ start/finish times and tag/plate attribution. Tag charge breakdowns retain zero
 entries; all supplied notes are shown as plain text. Invalid dates or numeric
 strings are not coerced; usable fields remain visible with an explicit warning.
 `found: false` produces an unavailable-statement message, not an empty success card.
+The expanded statement layout uses a prominent closing balance (or the supplied
+total if no closing balance is available), status badge and date summary.
+Balance/payment and charge groups precede a full-width transaction table with
+compact, wrapping metadata. Tag amounts use individual tiles; notes sit in a
+separate reading panel. All sections stay expanded, including on mobile, and no
+financial values are recalculated for the design. At phone widths, transaction
+rows become full-width stacked entries with date/amount above the description
+and metadata; explicit table roles preserve accessible row/header relationships.
 
 Recognised data parts use:
 
