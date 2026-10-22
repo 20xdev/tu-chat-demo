@@ -1,4 +1,4 @@
-export const CONFIG_URL = 'https://main--tu-chat-demo--20xdev.aem.page/config.json';
+export const CONFIG_URL = '/config.json';
 
 const FIELDS = [
   'authorizationEndpoint', 'tokenEndpoint', 'logoutEndpoint', 'clientId', 'redirectUri',
@@ -72,7 +72,7 @@ export function createConfigLoader(
         try {
           response = await fetcher(CONFIG_URL, { credentials: 'omit', cache: 'no-store' });
         } catch {
-          throw new Error('Chat configuration could not be downloaded. Check connectivity and sheet CORS.');
+          throw new Error('Chat configuration could not be downloaded. Check connectivity and /config.json availability.');
         }
         if (!response.ok) throw new Error(`Chat configuration request failed (HTTP ${response.status}).`);
         let sheet;

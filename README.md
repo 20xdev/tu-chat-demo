@@ -28,8 +28,8 @@ viewport, including when the mobile keyboard changes the available space.
 
 ### Chat configuration and authentication
 
-The chat now loads its public configuration from
-`https://main--tu-chat-demo--20xdev.aem.page/config.json`, using
+The chat loads its public configuration from the fixed root-relative path
+`/config.json` on the current frontend origin, using
 `scripts/chat-config.js`. There was no AIO browser-config loader or Cognito
 implementation in this branch; its old direct A2A proxy flow has been migrated
 to the supplied AG-UI frontdoor contract. There is no AIO fallback.
@@ -99,12 +99,13 @@ must accept Authorization, Content-Type, Accept and
 `X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` and return SSE. Mock tests do not
 verify customer login, provider CORS, or an authenticated AG-UI media contract.
 
-Browser validation from `http://localhost:3000` observed the published sheet
-blocked by CORS: its response did not include `Access-Control-Allow-Origin`.
-The loader reports this failure and leaves chat disabled. Local style testing
-must use the isolated fixture lab, not a weakened production loader. Same-origin
-sheet loading on the configured `main` frontend does not require cross-origin
-sheet permission.
+Root-relative loading avoids the former cross-origin request from branch or
+localhost pages to the `main` sheet and works on nested page paths. Each frontend
+must serve its configuration at `/config.json`; no query-string URL override or
+cross-origin fallback is accepted. This does not rewrite `redirectUri`: a branch
+sheet that still points to the `main` callback will fail callback-origin
+validation. Local style testing should use the isolated fixture lab rather than
+weakening the production authentication checks.
 
 ### Chat response images
 

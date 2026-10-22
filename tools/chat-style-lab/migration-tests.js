@@ -148,13 +148,18 @@ const cases = [
       return rejects(() => parseChatConfig(input, origin));
     }));
   }],
-  ['Sheet fetch uses trusted URL, omits credentials and deduplicates successful loads', async () => {
+  ['Sheet fetch uses a fixed root-relative URL, omits credentials and deduplicates loads', async () => {
     let calls = 0;
     const load = createConfigLoader(async (url, options) => {
       calls += 1;
       assert(
-        url === CONFIG_URL && options.credentials === 'omit' && !options.headers,
+        url === '/config.json' && url === CONFIG_URL
+          && options.credentials === 'omit' && !options.headers,
         'Sheet authentication or URL changed',
+      );
+      assert(
+        new URL(url, `${origin}/account-and-passes/details`).href === `${origin}/config.json`,
+        'Configuration inherited a page directory or a different origin',
       );
       return new Response(JSON.stringify(sheet));
     }, origin);
