@@ -418,6 +418,92 @@ function statementView(value, host) {
   }
 }
 
+function tripListView(value, host) {
+  if (!Array.isArray(value?.trips)) {
+    host.append(element('p', 'chat-tool-fallback', 'Trip information is unavailable because the supplied trip list is invalid.'));
+    return;
+  }
+  host.classList.add('chat-trip-list');
+  const heading = element('div', 'chat-trip-list-header');
+  heading.append(element('h3', 'chat-trip-title', 'Trip breakdown'));
+  const count = element('span', 'chat-trip-count');
+  heading.append(count);
+  const list = element('ol', 'chat-trip-items');
+  const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
+  let incomplete = false;
+  value.trips.forEach((trip) => {
+    if (!trip || typeof trip !== 'object' || Array.isArray(trip)) {
+      incomplete = true;
+      return;
+    }
+    function text(key) {
+      if (trip[key] === undefined) return null;
+      if (typeof trip[key] === 'string' && trip[key].trim()) return trip[key].trim();
+      incomplete = true;
+      return null;
+    }
+    function money(key) {
+      if (typeof trip[key] === 'number' && Number.isFinite(trip[key])) {
+        return currency.format(trip[key]);
+      }
+      incomplete = true;
+      return null;
+    }
+    const fields = Object.fromEntries([
+      'trip_id', 'date', 'start', 'finish', 'road', 'from', 'to',
+      'by', 'plate', 'vehicle', 'charged', 'statement',
+    ].map((key) => [key, text(key)]));
+    if (!fields.trip_id || !fields.date || !fields.road || !fields.from || !fields.to) {
+      incomplete = true;
+    }
+    const item = element('li', 'chat-trip-item');
+    const top = element('div', 'chat-trip-heading');
+    const route = element('div', 'chat-trip-route');
+    route.append(element('strong', 'chat-trip-road', fields.road || 'Road unavailable'));
+    route.append(element(
+      'span',
+      'chat-trip-places',
+      [fields.from, fields.to].filter(Boolean).join(' \u2192 ') || 'Route details unavailable',
+    ));
+    const price = element('div', 'chat-trip-price');
+    const detection = fields.by?.toLowerCase();
+    if (detection === 'no tag detected (matched by number plate)' || /^tag ending \d+$/.test(detection || '')) {
+      const badge = element('span', 'chat-trip-badge', detection.startsWith('tag') ? 'Tag' : 'Plate');
+      badge.classList.toggle('chat-trip-badge-plate', !detection.startsWith('tag'));
+      price.append(badge);
+    }
+    price.append(element('strong', 'chat-trip-total', money('total_aud') || 'Total unavailable'));
+    top.append(route, price);
+    const timing = [
+      fields.date, fields.start && `Start: ${fields.start}`, fields.finish && `Finish: ${fields.finish}`,
+    ].filter(Boolean).join(' \u00b7 ');
+    const pricing = element('div', 'chat-trip-pricing');
+    pricing.append(
+      element('span', '', `Toll: ${money('toll_aud') || 'unavailable'}`),
+      element('span', '', `Video matching fee: ${money('video_matching_fee_aud') || 'unavailable'}`),
+    );
+    const metadata = element('dl', 'chat-trip-metadata');
+    [
+      ['Trip ID', fields.trip_id], ['Charged by', fields.by],
+      ['Plate', fields.plate], ['Vehicle', fields.vehicle],
+      ['Charged', fields.charged], ['Statement', fields.statement],
+    ].forEach(([label, content]) => {
+      if (!content) return;
+      const field = element('div', 'chat-trip-field');
+      field.append(element('dt', '', `${label}: `), element('dd', '', content));
+      metadata.append(field);
+    });
+    item.append(top, element('p', 'chat-trip-timing', timing), pricing, metadata);
+    list.append(item);
+  });
+  count.textContent = `${list.childElementCount} ${list.childElementCount === 1 ? 'trip' : 'trips'} \u00b7 AUD`;
+  host.append(heading, list);
+  if (!value.trips.length) host.append(element('p', 'chat-trip-empty', 'No trips were returned.'));
+  if (incomplete) {
+    host.append(element('p', 'chat-tool-fallback', 'Some trip details could not be displayed because the supplied data is incomplete or invalid.'));
+  }
+}
+
 function helpView(value, host, assetBase) {
   const help = parseHelpMedia(value);
   const cleanups = [];
@@ -501,6 +587,7 @@ export default function createToolViews(
         let dispose = () => {};
         if (tool.kind === 'routePlan') dispose = routeView(tool.value, host);
         if (tool.kind === 'statementCard') statementView(tool.value, host);
+        if (tool.kind === 'tripList') tripListView(tool.value, host);
         if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase);
         if (tool.kind === 'followUps') {
           host.classList.add('chat-followups');

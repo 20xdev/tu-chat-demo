@@ -167,6 +167,7 @@ separately from the legacy A2A adapter. These custom events feed the same render
 ```json
 {"type":"CUSTOM","name":"routePlan","value":{"toolCallId":"route-1","ok":true}}
 {"type":"CUSTOM","name":"statementCard","value":{"toolCallId":"statement-1","found":true,"statement_id":"DEMO-STATEMENT","statement_date":"2026-09-25"}}
+{"type":"CUSTOM","name":"tripList","value":{"toolCallId":"trips-1","trips":[]}}
 {"type":"CUSTOM","name":"followUps","value":{"toolCallId":"followups-1","options":["Check a different route","Plan another trip"]}}
 ```
 
@@ -174,7 +175,7 @@ The route example is abbreviated and requires the full geometry described below.
 Cards upsert by event name and `value.toolCallId`; identical repeated results keep
 their existing views. Tool completion and later text do not remove the map or
 suggestions. The unsupported-content notice appears only for unrecognized custom
-names, not `routePlan`, `statementCard` or `followUps`. AG-UI help-media mapping remains unverified;
+names, not `routePlan`, `statementCard`, `tripList` or `followUps`. AG-UI help-media mapping remains unverified;
 the existing A2A help-media support is unchanged. The local lab's **AWS AG-UI route
 + follow-ups** scenario exercises the raw event format using fictional demo data.
 The **AWS AG-UI statement + follow-ups** scenario uses fictional statement data;
@@ -199,6 +200,15 @@ separate reading panel. All sections stay expanded, including on mobile, and no
 financial values are recalculated for the design. At phone widths, transaction
 rows become full-width stacked entries with date/amount above the description
 and metadata; explicit table roles preserve accessible row/header relationships.
+
+AG-UI `tripList` cards show every supplied trip in its original order, without
+truncation. Each entry retains its ID, date/start/finish, road/from/to, detection
+method, plate/vehicle, charged timestamp, statement, toll, video matching fee
+and supplied total. Human-readable dates remain unchanged; `*_aud` amounts use
+AUD without coercing numeric strings or recomputing totals. Known detection
+labels receive Tag/Plate badges; the full original description remains visible.
+All details stay expanded. Empty lists show an explicit no-trips message;
+malformed data shows an explanatory warning while retaining usable entries.
 
 Recognised data parts use:
 

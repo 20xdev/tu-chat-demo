@@ -60,6 +60,23 @@ const sampleRoute = {
   ],
   assumptions: ['Not a live quote'],
 };
+const sampleTrips = Array.from({ length: 10 }, (_, index) => ({
+  trip_id: `DEMO-TRIP-${index + 1}`,
+  date: 'Fri 2 Oct 2026',
+  start: '6:05pm',
+  finish: '6:09pm',
+  road: 'Demo toll road',
+  from: 'Demo origin',
+  to: 'Demo destination',
+  by: index < 7 ? 'no tag detected (matched by number plate)' : 'tag ending 0000',
+  plate: 'DEMO',
+  vehicle: 'Demo vehicle',
+  toll_aud: 2.5,
+  video_matching_fee_aud: index < 7 ? 0.75 : 0,
+  total_aud: index < 7 ? 3.25 : 2.5,
+  charged: 'Fri 2 Oct 2026 6:38pm',
+  statement: index < 3 ? 'Not on a statement yet' : 'DEMO-STATEMENT',
+}));
 const sampleStatement = {
   found: true,
   statement_id: 'DEMO-STATEMENT-2026-09',
@@ -693,6 +710,72 @@ const cases = [
     );
     view.dispose();
   }],
+  ['Trip lists preserve all ten entries, their order, metadata and supplied prices', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['trips:t', { kind: 'tripList', value: { trips: sampleTrips } }]]));
+    const items = [...host.querySelectorAll('.chat-trip-item')];
+    assert(items.length === 10 && host.querySelector('.chat-trip-count').textContent === '10 trips \u00b7 AUD', 'Trips were truncated');
+    items.forEach((item, index) => {
+      const trip = sampleTrips[index];
+      [
+        trip.trip_id, trip.date, trip.start, trip.finish, trip.road, trip.from, trip.to,
+        trip.by, trip.plate, trip.vehicle, trip.charged, trip.statement,
+      ].forEach((value) => assert(item.textContent.includes(value), `Trip field was omitted: ${value}`));
+      assert(
+        item.querySelector('.chat-trip-total').textContent === (index < 7 ? '$3.25' : '$2.50')
+        && item.querySelector('.chat-trip-pricing').textContent.includes('Toll: $2.50')
+        && item.querySelector('.chat-trip-pricing').textContent.includes(index < 7 ? '$0.75' : '$0.00')
+        && item.querySelector('.chat-trip-badge').textContent === (index < 7 ? 'Plate' : 'Tag'),
+        'Trip prices were recomputed, zeros omitted, or detection labels changed',
+      );
+    });
+    assert(!host.querySelector('.chat-tool-fallback,details,[hidden]'), 'Valid trip details were marked invalid or collapsed');
+    view.dispose();
+    assert(!host.hasChildNodes(), 'Disposed trip list remained visible');
+  }],
+  ['Empty and malformed trip lists show explicit results without guessed prices', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const update = (value) => view.update(new Map([['trips:t', { kind: 'tripList', value }]]));
+    update({ trips: [] });
+    assert(host.textContent.includes('No trips were returned.') && !host.querySelector('.chat-tool-fallback'), 'Empty list became an error or fabricated trip');
+    [null, {}, { trips: 'invalid' }].forEach((value) => {
+      update(value);
+      assert(host.querySelector('.chat-tool-fallback'), 'Malformed trip list silently disappeared');
+    });
+    update({
+      trips: [null, {
+        ...sampleTrips[0], toll_aud: '2.50', video_matching_fee_aud: null, total_aud: '3.25',
+      }],
+    });
+    assert(
+      host.querySelectorAll('.chat-trip-item').length === 1
+      && host.querySelector('.chat-trip-total').textContent === 'Total unavailable'
+      && host.querySelector('.chat-trip-pricing').textContent.includes('Toll: unavailable')
+      && host.querySelector('.chat-tool-fallback').textContent.includes('incomplete or invalid'),
+      'Invalid trip values were coerced or usable entries discarded',
+    );
+    view.dispose();
+  }],
+  ['Trip labels remain plain text and unknown detection methods are not guessed', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const markup = '<img src=x onerror=alert(1)>';
+    view.update(new Map([['trips:t', {
+      kind: 'tripList',
+      value: {
+        trips: [{
+          ...sampleTrips[0], road: markup, plate: markup, by: markup,
+        }],
+      },
+    }]]));
+    assert(
+      !host.querySelector('img,script,.chat-trip-badge') && host.textContent.includes(markup),
+      'Trip labels became active HTML or unknown detection was classified',
+    );
+    view.dispose();
+  }],
   ['Follow-up options are validated and deduplicated', () => {
     assert(followUpOptions({ options: [' Ask ', '', null, 'Ask', 42, 'Other'] }).join() === 'Ask,Other', 'Follow-up validation failed');
   }],
@@ -1147,6 +1230,20 @@ const cases = [
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
+        if (mode === 'trip-list') {
+          const tripEvent = {
+            type: 'CUSTOM', name: 'tripList', value: { toolCallId: 'aws-trips', trips: sampleTrips },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-trips', toolCallName: 'get_my_trips' },
+            tripEvent,
+            tripEvent,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-trips' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Here are your fictional trips.' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'trip-followups', options: ['Check my tag', 'Order a replacement', 'Dispute the video matching fees'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -1273,6 +1370,39 @@ const cases = [
         .getAttribute('aria-busy') === 'false', 'progress failure');
       assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Failed tool progress stayed visible');
       assert(!doc.querySelector('.chat-loading-status'), 'Failure retained a loading indicator');
+      mode = 'trip-list';
+      doc.querySelector('.chat-reset').click();
+      await submit('Show my last ten trips');
+      const tripList = doc.querySelector('.chat-trip-list');
+      assert(
+        doc.querySelectorAll('.chat-trip-list').length === 1
+        && tripList.querySelectorAll('.chat-trip-item').length === 10
+        && !doc.querySelector('.chat-turn-status:not([hidden])'),
+        'Trip list was missing, duplicated, truncated or showed an unsupported notice',
+      );
+      const tripWidth = frame.style.width;
+      frame.style.width = '375px';
+      win.dispatchEvent(new win.Event('resize'));
+      assert(
+        tripList.scrollWidth <= tripList.clientWidth
+        && tripList.getBoundingClientRect().right <= win.innerWidth
+        && tripList.querySelector('.chat-trip-metadata').getBoundingClientRect().height > 0
+        && !tripList.querySelector('details,[hidden]'),
+        'Mobile trip list overflowed or hid metadata',
+      );
+      frame.style.width = tripWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const tripRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelector('.chat-followup').click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'trip-list follow-up request');
+      assert(
+        requests.at(-1).request.messages[0].content === 'Check my tag'
+        && requests.at(-1).request.threadId === tripRequest.request.threadId
+        && requests.at(-1).session === tripRequest.session && tripList.isConnected,
+        'Trip follow-up lost its text, context or rendered list',
+      );
       mode = 'statement';
       doc.querySelector('.chat-reset').click();
       await submit('Show my latest statement');

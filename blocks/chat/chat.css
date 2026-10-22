@@ -754,6 +754,141 @@
   margin-top: 8px;
 }
 
+.chat .chat-trip-list {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0;
+  overflow: hidden;
+  border: 1px solid #d8d8d8;
+  border-radius: 16px;
+  background: #fff;
+}
+
+.chat .chat-trip-list-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px 16px;
+  padding: 16px 20px;
+  border-bottom: 1px solid #e4ebe6;
+  background: #f5f9f6;
+}
+
+.chat .chat-trip-list .chat-trip-title {
+  margin: 0;
+  color: #1c1c1c;
+  font-size: 16px;
+}
+
+.chat .chat-trip-count {
+  color: #647168;
+  font-size: 12px;
+}
+
+.chat .chat-trip-list .chat-trip-items {
+  margin: 0;
+  padding: 0 20px;
+  list-style: none;
+}
+
+.chat .chat-trip-list .chat-trip-item {
+  margin: 0;
+  padding: 16px 0;
+}
+
+.chat .chat-trip-item + .chat-trip-item {
+  border-top: 1px solid #e4ebe6;
+}
+
+.chat .chat-trip-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.chat .chat-trip-route {
+  min-width: 0;
+  color: #526058;
+  font-size: 14px;
+}
+
+.chat .chat-trip-road {
+  margin-right: 8px;
+  color: #1c1c1c;
+}
+
+.chat .chat-trip-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px 10px;
+  min-width: 0;
+}
+
+.chat .chat-trip-total {
+  color: #1c1c1c;
+  font-size: 15px;
+  font-variant-numeric: tabular-nums;
+}
+
+.chat .chat-trip-badge {
+  padding: 2px 8px;
+  border-radius: 999px;
+  color: #006d34;
+  background: #e3f3e9;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.chat .chat-trip-badge-plate {
+  color: #805100;
+  background: #fff1c7;
+}
+
+.chat .chat-trip-list :is(.chat-trip-timing, .chat-trip-empty) {
+  margin: 4px 0 0;
+  color: #647168;
+  font-size: 12px;
+}
+
+.chat .chat-trip-pricing {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin-top: 8px;
+  color: #526058;
+  font-size: 12px;
+}
+
+.chat .chat-trip-list .chat-trip-metadata {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  margin: 8px 0 0;
+  color: #647168;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.chat .chat-trip-field {
+  display: flex;
+  flex-wrap: wrap;
+  column-gap: 4px;
+  min-width: 0;
+}
+
+.chat .chat-trip-field dt {
+  font-weight: 500;
+}
+
+.chat .chat-trip-field dd {
+  min-width: 0;
+  margin: 0;
+}
+
 .chat .chat-route {
   position: relative;
   overflow: hidden;

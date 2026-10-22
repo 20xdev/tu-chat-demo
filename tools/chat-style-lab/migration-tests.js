@@ -447,6 +447,23 @@ const cases = [
     );
     assert(state.customEvents.length === 0 && state.customBytes === 0, 'Known statement consumed unknown retention');
   }],
+  ['Observed tripList events upsert and complete without unsupported notices', async () => {
+    const state = createAGUITurn('thread');
+    const event = { type: 'CUSTOM', name: 'tripList', value: { toolCallId: 'trips-1', trips: [] } };
+    applyAGUIEvent(state, event);
+    const first = state.tools.get('tripList:trips-1');
+    applyAGUIEvent(state, JSON.parse(JSON.stringify(event)));
+    assert(state.tools.get('tripList:trips-1') === first, 'Repeated trip list recreated the view');
+    await readAGUIStream(stream([
+      { ...event, value: { ...event.value, trips: [{ trip_id: 'DEMO-TRIP' }] } },
+    ]), state, () => {});
+    assert(
+      state.outcome === 'completed' && !aguiNotice(state) && state.tools.size === 1
+      && state.tools.get('tripList:trips-1').value.trips[0].trip_id === 'DEMO-TRIP'
+      && !state.customEvents.length && state.customBytes === 0,
+      'Trip-only completion lost data, warned, or consumed unknown-event retention',
+    );
+  }],
   ['AG-UI tool-only clean EOF retains recognized interactive content', async () => {
     const state = createAGUITurn('thread');
     await readAGUIStream(stream([
@@ -458,7 +475,7 @@ const cases = [
     );
   }],
   ['AG-UI recognized custom events require explicit tool-call identity', async () => {
-    await Promise.all(['routePlan', 'statementCard', 'followUps'].flatMap((name) => [
+    await Promise.all(['routePlan', 'statementCard', 'tripList', 'followUps'].flatMap((name) => [
       null, {}, { toolCallId: '' }, { toolCallId: 42 },
     ].map((value) => rejects(() => readAGUIStream(stream([{ type: 'CUSTOM', name, value }]), createAGUITurn('thread'), () => {}), 'tool call ID'))));
   }],
