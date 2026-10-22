@@ -1,5 +1,6 @@
 import { getMetadata } from '../../scripts/aem.js';
 import { loadFragment } from '../fragment/fragment.js';
+import { chatAuth } from '../../scripts/chat-auth.js';
 
 // media query match that indicates mobile/tablet width
 const isDesktop = window.matchMedia('(min-width: 900px)');
@@ -51,6 +52,55 @@ function openOnKeydown(e) {
 
 function focusNavSection() {
   document.activeElement.addEventListener('keydown', openOnKeydown);
+}
+
+function decorateAuth(nav) {
+  const loginLink = [...nav.querySelectorAll('.nav-tools a')]
+    .find((link) => /^(log\s*in|sign\s*in)$/i.test(link.textContent.trim()));
+  if (!loginLink) return;
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'nav-auth-button';
+  const status = document.createElement('p');
+  status.className = 'nav-auth-status';
+  status.id = 'nav-auth-status';
+  status.hidden = true;
+  button.setAttribute('aria-describedby', status.id);
+  loginLink.replaceWith(button);
+  nav.querySelector('.nav-tools').append(status);
+  let authState = { status: 'loading' };
+  function showError(error) {
+    status.textContent = error instanceof Error ? error.message : 'Chat sign-in failed.';
+    status.setAttribute('role', 'alert');
+    status.hidden = false;
+  }
+  const unsubscribe = chatAuth.subscribe((state) => {
+    const previous = authState.status;
+    authState = state;
+    const busy = ['loading', 'signing-in'].includes(state.status);
+    button.textContent = state.status === 'authenticated' ? 'Log out' : 'Log in';
+    button.disabled = busy;
+    button.setAttribute('aria-busy', String(busy));
+    status.textContent = state.message;
+    status.setAttribute('role', state.status === 'error' ? 'alert' : 'status');
+    status.hidden = !(state.status === 'error'
+      || (previous === 'authenticated' && state.status === 'signed-out'));
+  });
+  button.addEventListener('click', async () => {
+    button.disabled = true;
+    try {
+      if (authState.status === 'authenticated') chatAuth.logout();
+      else await chatAuth.login();
+    } catch (error) {
+      showError(error);
+    } finally {
+      button.disabled = ['loading', 'signing-in'].includes(authState.status);
+    }
+  });
+  chatAuth.initialize().catch(showError);
+  window.addEventListener('pagehide', (event) => {
+    if (!event.persisted) unsubscribe();
+  }, { once: true });
 }
 
 /**
@@ -168,4 +218,5 @@ export default async function decorate(block) {
   navWrapper.className = 'nav-wrapper';
   navWrapper.append(nav);
   block.append(navWrapper);
+  decorateAuth(nav);
 }

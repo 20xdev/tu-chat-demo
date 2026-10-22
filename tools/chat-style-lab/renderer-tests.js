@@ -677,6 +677,9 @@ const cases = [
       await waitFor(() => frame.contentDocument?.querySelector('.chat-field'), 'chat layout initialisation');
       const doc = frame.contentDocument;
       const win = frame.contentWindow;
+      await waitFor(() => !doc.querySelector('.chat-launcher-trigger').disabled, 'layout sign-in ready');
+      doc.querySelector('.chat-launcher-trigger').click();
+      await waitFor(() => !doc.querySelector('.chat-field').disabled, 'layout authenticated session');
       doc.querySelector('.chat-launcher-trigger').click();
       doc.getAnimations().filter((animation) => Number.isFinite(animation.effect
         .getComputedTiming().endTime)).forEach((animation) => animation.finish());
@@ -799,10 +802,30 @@ const cases = [
           { headers: { 'Content-Type': 'text/event-stream' } },
         ));
       };
-      doc.querySelector('.chat-launcher-trigger').click();
-      await waitFor(() => !doc.querySelector('.chat-auth-button').disabled, 'local mock sign-in');
-      doc.querySelector('.chat-auth-button').click();
+      await waitFor(() => !doc.querySelector('.chat-launcher-trigger').disabled, 'local mock sign-in');
+      await waitFor(
+        () => doc.querySelector('.nav-auth-button')?.textContent === 'Log in',
+        'header signed-out state',
+      );
+      assert(
+        doc.querySelector('.chat-launcher-trigger span').textContent === 'Log in to chat',
+        'Signed-out launcher did not offer login',
+      );
+      doc.querySelector('.chat-launcher button:not(.chat-launcher-trigger)').click();
       await waitFor(() => !doc.querySelector('.chat-field').disabled, 'synthetic authenticated UI');
+      await waitFor(
+        () => doc.querySelector('.nav-auth-button')?.textContent === 'Log out',
+        'header authenticated state',
+      );
+      assert(!doc.querySelector('.chat-dialog').open, 'Signed-out launcher opened chat instead of login');
+      assert(!doc.querySelector('.chat-auth button'), 'Dialog retained authentication controls');
+      assert(
+        [...doc.querySelectorAll('.chat-dialog button')]
+          .every((button) => !/^(log|sign)\s*(in|out)$/i.test(button.textContent.trim())),
+        'Dialog retained a login or logout button',
+      );
+      doc.querySelector('.chat-launcher-trigger').click();
+      assert(doc.querySelector('.chat-auth').hidden, 'Authenticated dialog retained the auth bar');
       const submit = async (question) => {
         doc.querySelector('.chat-field').value = question;
         doc.querySelector('.chat-input').requestSubmit();
@@ -901,9 +924,28 @@ const cases = [
       doc.querySelector('.chat-input').requestSubmit();
       await waitFor(() => doc.querySelector('.chat-answer')?.textContent
         .includes('Held partial answer'), 'held stream output');
-      doc.querySelector('.chat-auth-button').click();
+      doc.querySelector('.chat-dialog').close();
+      doc.querySelector('.nav-auth-button').click();
       await waitFor(() => cancelled && doc.querySelector('.chat-field').disabled, 'logout cancellation');
       assert(!doc.querySelector('.chat-message'), 'Logout retained customer conversation content');
+      assert(doc.querySelector('.nav-auth-button').textContent === 'Log in', 'Header did not reset');
+      assert(!doc.querySelector('.nav-auth-status').hidden, 'Logout notice was hidden');
+      assert(
+        doc.querySelector('.chat-launcher-trigger span').textContent === 'Log in to chat',
+        'Logout did not restore the launcher login prompt',
+      );
+      doc.querySelector('.nav-auth-button').click();
+      await waitFor(() => !doc.querySelector('.chat-field').disabled, 'header login');
+      assert(
+        doc.querySelector('.nav-auth-button').textContent === 'Log out',
+        'Header login did not share the chat session',
+      );
+      doc.querySelector('.nav-auth-button').click();
+      doc.querySelector('.chat-launcher-trigger').dispatchEvent(new win.KeyboardEvent('keydown', { key: 'Enter', bubbles: true }));
+      await waitFor(() => !doc.querySelector('.chat-field').disabled, 'keyboard launcher sign-in');
+      assert(!doc.querySelector('.chat-dialog').open, 'Keyboard login opened the dialog');
+      doc.querySelector('.chat-launcher-trigger').click();
+      assert(doc.querySelector('.chat-dialog').open, 'Authenticated launcher did not open chat');
     } finally {
       frame.remove();
     }
