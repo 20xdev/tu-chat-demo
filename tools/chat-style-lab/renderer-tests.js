@@ -1,10 +1,12 @@
 import { createResponseRenderer, mergeResponseParts } from '../../scripts/chat-response.js';
 import {
-  answerParts, applyTurnEvent, createChatRequest, createTurnState, followUpOptions,
+  answerParts, applyTurnEvent, createTurnState, followUpOptions,
   parseRoutePlan, readA2AStream, routeGeometry, turnFinished,
 } from '../../scripts/chat-stream.js';
 import createToolViews from '../../scripts/chat-tools.js';
 import { parseHelpMedia, resolveHelpMediaURL } from '../../scripts/chat-help.js';
+import { createAGUIRequest } from '../../scripts/chat-agui.js';
+import migrationCases from './migration-tests.js';
 
 const markdownURL = 'https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.esm.js';
 const sanitizerURL = 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs';
@@ -208,14 +210,14 @@ const cases = [
     assert(result.querySelector('.chat-image-fallback')?.textContent.includes('Broken route: Image could not be loaded.'), 'Load failure was not explained');
   }],
   ['Requests preserve authentication, method, text and conversation identity', () => {
-    const first = createChatRequest('First question', 'conversation-1', 'fixture-token');
-    const second = createChatRequest('Second question', 'conversation-1', 'fixture-token');
+    const first = createAGUIRequest('First question', 'conversation-1', 'session-1', 'fixture-token');
+    const second = createAGUIRequest('Second question', 'conversation-1', 'session-1', 'fixture-token');
     const a = JSON.parse(first.body);
     const b = JSON.parse(second.body);
-    assert(first.method === 'POST' && first.headers['X-Chat-Access-Token'] === 'fixture-token', 'Authentication changed');
-    assert(a.method === 'message/stream' && a.params.message.contextId === b.params.message.contextId, 'Conversation identity changed');
-    assert(a.id !== b.id && a.params.message.messageId !== b.params.message.messageId, 'IDs were reused');
-    assert(b.params.message.parts[0].text === 'Second question', 'Question was changed');
+    assert(first.method === 'POST' && first.headers.Authorization === 'Bearer fixture-token', 'Authentication changed');
+    assert(a.threadId === b.threadId, 'Conversation identity changed');
+    assert(a.runId !== b.runId && a.messages[0].id !== b.messages[0].id, 'IDs were reused');
+    assert(b.messages[0].content === 'Second question', 'Question was changed');
   }],
   ['Provisional text is replaced by the final artifact without losing route data', () => {
     const state = createTurnState('c');
@@ -720,42 +722,87 @@ const cases = [
       await waitFor(() => frame.contentDocument?.querySelector('.chat-field'), 'chat initialisation');
       const win = frame.contentWindow;
       const doc = frame.contentDocument;
+      Object.defineProperty(doc, 'cookie', {
+        configurable: true,
+        get() { throw new Error('Chat must not read cookies'); },
+      });
       const originalFetch = win.fetch.bind(win);
       const requests = [];
       let mode = 'structured';
+      let unauthorized = true;
+      let cancelled = false;
+      let rejectedBodyCancelled = false;
+      let progressController;
       win.fetch = (url, options) => {
-        if (url !== '/__mock/a2a') return originalFetch(url, options);
+        if (url !== '/__mock/ag-ui') return originalFetch(url, options);
         const request = JSON.parse(options.body);
-        requests.push({ request, token: options.headers['X-Chat-Access-Token'] });
+        requests.push({
+          request,
+          token: options.headers.Authorization,
+          session: options.headers['X-Amzn-Bedrock-AgentCore-Runtime-Session-Id'],
+          credentials: options.credentials,
+        });
+        if (mode === 'progress-held') {
+          return Promise.resolve(new win.Response(new win.ReadableStream({
+            start(controller) {
+              progressController = controller;
+              const event = { type: 'TOOL_CALL_START', toolCallId: 'p', toolCallName: 'synthetic_tool' };
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+            },
+          }), { headers: { 'Content-Type': 'text/event-stream' } }));
+        }
+        if (mode === 'held') {
+          return Promise.resolve(new win.Response(new win.ReadableStream({
+            start(controller) {
+              const event = { type: 'TEXT_MESSAGE_CONTENT', messageId: 'held', delta: 'Held partial answer' };
+              controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(event)}\n\n`));
+              options.signal.addEventListener('abort', () => {
+                cancelled = true;
+                controller.error(new win.DOMException('Cancelled fixture', 'AbortError'));
+              }, { once: true });
+            },
+          }), { headers: { 'Content-Type': 'text/event-stream' } }));
+        }
+        if (mode === 'auth-retry' && unauthorized) {
+          unauthorized = false;
+          return Promise.resolve(new win.Response('{}', { status: 401 }));
+        }
+        if (mode === 'empty-response') {
+          return Promise.resolve(new win.Response(null, { status: 204 }));
+        }
         if (mode === 'http-error' || mode === 'json-response') {
-          return Promise.resolve(new win.Response('{"error":"fixture"}', {
+          const response = new win.Response('{"error":"fixture"}', {
             status: mode === 'http-error' ? 500 : 200,
             headers: { 'Content-Type': 'application/json' },
-          }));
+          });
+          const cancel = response.body.cancel.bind(response.body);
+          response.body.cancel = () => {
+            rejectedBodyCancelled = true;
+            return cancel();
+          };
+          return Promise.resolve(response);
         }
+        // Synthetic CUSTOM values do not establish an AWS media mapping.
         const events = mode === 'structured' ? [
-          {
-            result: status([text('Provisional'), tool('routePlan', { ok: false }),
-              tool('helpMedia', {
-                ...sampleHelp,
-                media: [
-                  { ...sampleHelp.media[0], src: '/help/tags/D-type-tag-insert-car.svg' },
-                  { ...sampleHelp.media[1], src: '/help/tags/C-type-tag-insert-car.svg' },
-                  sampleHelp.media[2],
-                ],
-              }), tool('followUps', { options: ['Ask again'] })]),
-          },
-          { result: { kind: 'artifact-update', artifact: { artifactId: 'a', parts: [text('Final answer')] }, lastChunk: true } },
-          { result: status([], 'completed') },
-        ] : [{ result: status([text('Partial answer')]) }];
-        if (mode === 'rpc-error') events.push({ error: { code: -32603 } });
-        if (mode === 'complete') events.push({ result: status([], 'completed') });
+          { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Final answer' },
+          { type: 'CUSTOM', name: 'synthetic-unmapped', value: { sampleHelp } },
+          { type: 'CUSTOM', name: 'synthetic-unmapped', value: { sampleRoute } },
+          { type: 'RUN_FINISHED' },
+        ] : [{ type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Partial answer' }];
+        if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
+        if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
+        if (mode === 'interrupted') {
+          events.push({ type: 'TOOL_CALL_START', toolCallId: 'pending', toolCallName: 'synthetic_tool' });
+        }
         return Promise.resolve(new win.Response(
           events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(''),
           { headers: { 'Content-Type': 'text/event-stream' } },
         ));
       };
       doc.querySelector('.chat-launcher-trigger').click();
+      await waitFor(() => !doc.querySelector('.chat-auth-button').disabled, 'local mock sign-in');
+      doc.querySelector('.chat-auth-button').click();
+      await waitFor(() => !doc.querySelector('.chat-field').disabled, 'synthetic authenticated UI');
       const submit = async (question) => {
         doc.querySelector('.chat-field').value = question;
         doc.querySelector('.chat-input').requestSubmit();
@@ -764,49 +811,57 @@ const cases = [
       };
       await submit('Fixture question');
       assert(doc.querySelector('.chat-answer').textContent.trim() === 'Final answer', 'Answer duplicated');
-      assert(doc.querySelector('.chat-tool-fallback'), 'Route fallback was lost');
-      assert(
-        doc.querySelector('.chat-help ol li').textContent === 'Insert the tag.',
-        'Help instructions were lost when the final artifact arrived',
-      );
-      assert(doc.querySelectorAll('.chat-help img').length === 2, 'Bundled image URLs were not wired');
-      const helpImages = [...doc.querySelectorAll('.chat-help img')];
-      helpImages.forEach((image) => { image.loading = 'eager'; });
-      await waitFor(
-        () => helpImages.every((image) => image.complete && image.naturalWidth > 0),
-        'bundled images inside the actual chat',
-      );
-      assert(!doc.querySelector('.chat-help iframe'), 'Video unexpectedly embedded');
-      const followUp = doc.querySelector('.chat-followup');
-      assert(followUp, 'Follow-up button was not rendered');
+      assert(!doc.querySelector('.chat-help,.chat-route,.chat-followup'), 'Unverified media was fabricated');
+      assert(doc.querySelectorAll('.chat-turn-status:not([hidden])').length === 1, 'CUSTOM notice duplicated');
+      assert(doc.querySelector('.chat-turn-status').textContent.includes('not yet supported'), 'CUSTOM limitation hidden');
+      const oldTurn = doc.querySelector('.chat-message-received');
       mode = 'complete';
-      followUp.click();
-      followUp.click();
+      doc.querySelector('.chat-field').value = 'Ask again';
+      doc.querySelector('.chat-input').requestSubmit();
+      doc.querySelector('.chat-input').requestSubmit();
       await waitFor(() => doc.querySelector('.chat-messages')
         .getAttribute('aria-busy') === 'false', 'follow-up response');
       assert(requests.length === 2, 'Follow-up submitted twice');
       const [first, second] = requests.map((entry) => entry.request);
-      assert(first.params.message.contextId === second.params.message.contextId, 'Context changed');
-      assert(second.params.message.parts[0].text === 'Ask again', 'Follow-up text changed');
-      assert(first.id !== second.id, 'Request ID was reused');
-      assert(requests.every((entry) => entry.token === 'local-mock-only'), 'Mock auth isolation failed');
+      assert(first.threadId === second.threadId, 'Thread changed');
+      assert(requests[0].session === requests[1].session, 'Runtime session changed');
+      assert(second.messages[0].content === 'Ask again', 'Question text changed');
+      assert(first.runId !== second.runId, 'Run ID was reused');
+      assert(requests.every((entry) => entry.token === 'Bearer synthetic-local-access-token'
+        && entry.credentials === 'omit'), 'Mock bearer isolation failed');
       doc.querySelector('.chat-reset').click();
-      followUp.click();
-      assert(requests.length === 2, 'A stale suggestion submitted into the new conversation');
-      assert(!doc.querySelector('.chat-help'), 'Old help card leaked into the new conversation');
+      assert(!oldTurn.isConnected, 'Old turn leaked into the new conversation');
       await submit('New conversation');
       assert(
-        requests[2].request.params.message.contextId !== first.params.message.contextId,
-        'Reset reused the old conversation',
+        requests[2].request.threadId !== first.threadId
+          && requests[2].session !== requests[0].session,
+        'Reset reused the old conversation/session',
       );
-      const failureModes = ['http-error', 'json-response', 'interrupted', 'rpc-error'];
+      mode = 'auth-retry';
+      await submit('Retry an HTTP authorization rejection');
+      assert(
+        requests.length === 5
+        && JSON.stringify(requests[3].request) === JSON.stringify(requests[4].request),
+        '401 retry changed the run/message or retried more than once',
+      );
+      const failureModes = ['http-error', 'json-response', 'empty-response', 'interrupted', 'rpc-error'];
       // eslint-disable-next-line no-restricted-syntax -- Sequential UI turns share one iframe.
       for (const failureMode of failureModes) {
+        const before = requests.length;
+        rejectedBodyCancelled = false;
         mode = failureMode;
         doc.querySelector('.chat-reset').click();
         // eslint-disable-next-line no-await-in-loop
         await submit(failureMode);
         assert(doc.querySelector('.chat-retry'), 'Failure did not offer retry');
+        assert(requests.length === before + 1, 'Failed/partial stream was automatically replayed');
+        if (['http-error', 'json-response'].includes(mode)) {
+          assert(rejectedBodyCancelled, 'Rejected response body was not cancelled');
+        }
+        if (mode === 'empty-response') {
+          assert(doc.querySelector('.chat-error-description').textContent
+            .includes('no response stream'), 'Missing response stream had a misleading HTTP error');
+        }
         if (['interrupted', 'rpc-error'].includes(mode)) {
           assert(
             doc.querySelector('.chat-answer').textContent.trim() === 'Partial answer',
@@ -818,10 +873,42 @@ const cases = [
           );
         }
       }
+      mode = 'progress-held';
+      doc.querySelector('.chat-reset').click();
+      doc.querySelector('.chat-field').value = 'Finish tool progress before text';
+      doc.querySelector('.chat-input').requestSubmit();
+      await waitFor(() => doc.querySelector('.chat-turn-status')?.textContent
+        .includes('synthetic_tool'), 'tool progress');
+      progressController.enqueue(new TextEncoder().encode(
+        'data: {"type":"TOOL_CALL_END","toolCallId":"p"}\n\n',
+      ));
+      await waitFor(
+        () => doc.querySelector('.chat-loading-status')
+        && doc.querySelector('.chat-messages').getAttribute('aria-busy') === 'true',
+        'loading indicator after tool completion',
+      );
+      progressController.enqueue(new TextEncoder().encode(
+        'data: {"type":"RUN_ERROR","message":"Synthetic failure after progress"}\n\n',
+      ));
+      progressController.close();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'progress failure');
+      assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Failed tool progress stayed visible');
+      assert(!doc.querySelector('.chat-loading-status'), 'Failure retained a loading indicator');
+      mode = 'held';
+      doc.querySelector('.chat-reset').click();
+      doc.querySelector('.chat-field').value = 'Cancel on logout';
+      doc.querySelector('.chat-input').requestSubmit();
+      await waitFor(() => doc.querySelector('.chat-answer')?.textContent
+        .includes('Held partial answer'), 'held stream output');
+      doc.querySelector('.chat-auth-button').click();
+      await waitFor(() => cancelled && doc.querySelector('.chat-field').disabled, 'logout cancellation');
+      assert(!doc.querySelector('.chat-message'), 'Logout retained customer conversation content');
     } finally {
       frame.remove();
     }
   }],
+  ...migrationCases,
 ];
 
 const results = await Promise.all(cases.map(async ([name, run]) => {
