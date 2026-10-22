@@ -951,6 +951,28 @@ const cases = [
     assert(!parseHelpMedia(textOnly).warnings.length, 'Outcome required optional media or offer');
     assert(!parseHelpMedia({ ...textOnly, media: [] }).warnings.length, 'Empty outcome media warned');
   }],
+  ['Video-only outcomes accept null offers without warnings or missing-image fallbacks', () => {
+    const value = {
+      status: 'outcome',
+      outcome: 'working',
+      advice: 'Fictional tag-check advice.',
+      offer: null,
+      media: [{ type: 'video', youtubeId: 'OvsDIBF1emE', title: 'What do the tag beeps mean?' }],
+    };
+    const parsed = parseHelpMedia(value);
+    assert(parsed.offer === null && !parsed.warnings.length, 'Null offer produced a warning');
+    const { host, view } = helpViews(value);
+    assert(
+      host.querySelector('.chat-help-video-link')?.href === 'https://www.youtube.com/watch?v=OvsDIBF1emE'
+      && !host.querySelector('.chat-tool-fallback,img,iframe,.chat-help-offer-item')
+      && host.querySelector('.chat-help-advice').textContent === value.advice,
+      'Video-only outcome lost its link/advice, warned, or created an image/player/offer',
+    );
+    view.dispose();
+    [false, 0, '', [], {}].forEach((offer) => {
+      assert(parseHelpMedia({ ...value, offer }).warnings.length > 0, 'Malformed non-null offer was accepted');
+    });
+  }],
   ['Malformed outcome fields warn and remain plain text without enabling actions', () => {
     const parsed = parseHelpMedia({
       status: 'outcome', outcome: null, advice: 7, offer: { item: 'holder' }, media: null,

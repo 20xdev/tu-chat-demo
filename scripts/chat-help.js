@@ -63,7 +63,7 @@ export function parseHelpMedia(value) {
   if (isOutcome) {
     if (!outcome) warnings.push('No valid tag-check outcome was supplied.');
     if (!advice) warnings.push('No valid tag-check advice was supplied.');
-    if (Object.hasOwn(value, 'offer')) {
+    if (Object.hasOwn(value, 'offer') && value.offer !== null) {
       const supplied = value.offer;
       if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)) {
         warnings.push('The supplied offer is invalid.');

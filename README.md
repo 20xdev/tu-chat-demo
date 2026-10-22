@@ -298,7 +298,7 @@ still produces explicit warnings while usable content remains visible.
 `step` is backend workflow metadata, not a replacement question or instruction.
 
 The observed `status: "outcome"` variant shows its outcome label, advice and
-optional offer item/prompt, followed by any supplied illustrations in their
+optional offer item/prompt (`offer: null` means no offer), followed by any supplied illustrations in their
 original order. It also does not require `found` or `steps`, and absent/empty
 media is valid. Invalid outcome/advice/offer fields show explicit warnings
 without hiding usable content. The offer's `action` remains backend workflow
