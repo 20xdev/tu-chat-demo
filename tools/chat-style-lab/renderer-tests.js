@@ -35,6 +35,25 @@ const sampleRoute = {
   ok: true,
   origin: { label: 'Origin', position: [144.96, -37.81] },
   destination: { label: 'Destination', position: [144.85, -37.67] },
+  distance_km: 22.7,
+  duration_minutes: 19,
+  tolled_distance_km: 6.1,
+  untolled_distance_km: 16.6,
+  toll_total: 3.41,
+  currency: 'AUD',
+  tolls: [{
+    name: 'MELBOURNE CITYLINK',
+    system: 'MELBOURNE CITYLINK',
+    currency: 'AUD',
+    amount: 3.41,
+    estimate: false,
+    payment_methods: ['Transponder'],
+  }],
+  toll_roads: [{ name: 'Tullamarine Fwy', number: 'M2' }],
+  toll_payment_sites: [
+    { name: 'Travancore', position: [144.93942, -37.78523] },
+    { name: 'Brunswick West', position: [144.93786, -37.75851] },
+  ],
   segments: [
     { tolled: false, points: [[144.96, -37.81], [144.95, -37.8]] },
     { tolled: true, points: [[144.9, -37.75], [144.85, -37.67]] },
@@ -349,13 +368,13 @@ const cases = [
     assert(geometry.origin.join() === '-37.81,144.96', 'Longitude and latitude were reversed');
     assert(geometry.segments.length === 2 && geometry.segments[0].points.length === 2, 'Segments were joined');
     assert(!geometry.segments[0].tolled && geometry.segments[1].tolled, 'Road classifications were lost');
-    assert(geometry.bounds.length === 6, 'Bounds omitted route points or markers');
+    assert(geometry.bounds.length === 8, 'Bounds omitted route points or markers');
   }],
   ['Hundreds of route coordinates are preserved without simplification', () => {
     const points = Array.from({ length: 900 }, (_, index) => [144 + index / 10000, -37]);
     const route = parseRoutePlan({ ...sampleRoute, segments: [{ tolled: true, points }] });
     const geometry = routeGeometry(route);
-    const preserved = geometry.segments[0].points.length === 900 && geometry.bounds.length === 902;
+    const preserved = geometry.segments[0].points.length === 900 && geometry.bounds.length === 904;
     assert(preserved, 'Route points were dropped');
   }],
   ['Missing, unsuccessful and malformed routes never become fake maps', () => {
@@ -376,6 +395,143 @@ const cases = [
     const valid = parseRoutePlan({ ...sampleRoute, distance_km: '24.7', toll_total: -1 });
     assert(valid.distance === null && valid.toll === null, 'Invalid estimates were coerced');
     assert(valid.assumptions[0] === 'Not a live quote', 'Pricing assumptions were lost');
+  }],
+  ['Route card metadata preserves supplied tolls, roads and currencies without coercion', () => {
+    const route = parseRoutePlan(sampleRoute);
+    assert(
+      route.tolls[0].name === 'MELBOURNE CITYLINK' && route.tolls[0].amount === 3.41,
+      'Toll breakdown was lost',
+    );
+    assert(
+      route.tollRoads[0] === 'Tullamarine Fwy (M2)' && !route.incompleteDetails,
+      'Road labels were changed or marked invalid',
+    );
+    const malformed = parseRoutePlan({
+      ...sampleRoute,
+      tolls: [null, { name: 'Invalid', amount: '3.41' }, { name: 'Invalid', amount: 3, currency: 'bad-code' }],
+      toll_roads: [{ name: 'Invalid', number: 42 }],
+    });
+    assert(
+      !malformed.error && malformed.incompleteDetails
+      && !malformed.tolls.length && !malformed.tollRoads.length,
+      'Optional invalid details were coerced or discarded valid geometry',
+    );
+  }],
+  ['Map-first route cards use compact pricing and plain-text reference labels', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['route:t', { kind: 'routePlan', value: sampleRoute }]]));
+    const card = host.querySelector('.chat-route');
+    assert(card.firstElementChild.classList.contains('chat-route-map'), 'Map was not first in the card');
+    assert(
+      card.querySelector('.chat-route-places').textContent === 'Origin \u2192 Destination',
+      'Route title did not match the reference layout',
+    );
+    assert(
+      card.querySelector('.chat-route-trip-meta').textContent === '22.7 km \u00b7 19 min',
+      'Trip metrics did not use the compact layout',
+    );
+    assert(
+      card.querySelector('.chat-route-total').textContent === '$3.41',
+      'Toll total lost its currency or precision',
+    );
+    assert(
+      card.querySelector('.chat-route-tolled').textContent === '6.1 km on Tullamarine Fwy (M2)',
+      'Tolled road detail was omitted',
+    );
+    assert(
+      card.querySelector('.chat-route-untolled').getAttribute('aria-label').includes('Dashed'),
+      'Line classifications lost their accessible description',
+    );
+    assert(
+      card.querySelector('.chat-route-estimate').textContent.includes('Not a guaranteed'),
+      'Pricing disclaimer was removed',
+    );
+    view.update(new Map([['route:t', {
+      kind: 'routePlan',
+      value: {
+        ...sampleRoute,
+        origin: { ...sampleRoute.origin, label: '<img src=x onerror=alert(1)>' },
+        currency: undefined,
+        tolls: [{ name: '<b>Not markup</b>', amount: 3.41 }],
+      },
+    }]]));
+    assert(
+      !host.querySelector('.chat-route-places img,.chat-route-toll-name b'),
+      'Route labels became active markup',
+    );
+    assert(
+      host.querySelector('.chat-route-total').textContent === '3.41 (currency not supplied)',
+      'Missing currency was guessed or rounded',
+    );
+    view.dispose();
+  }],
+  ['All supplied toll metadata and payment sites reach the card and map model', () => {
+    const route = parseRoutePlan(sampleRoute);
+    assert(
+      route.tolls[0].system === 'MELBOURNE CITYLINK' && route.tolls[0].estimate === false
+      && route.tolls[0].paymentMethods.join() === 'Transponder',
+      'Toll system, false estimate flag or payment methods were dropped',
+    );
+    const geometry = routeGeometry(route);
+    assert(
+      geometry.paymentSites.length === 2
+      && geometry.paymentSites[0].position.join() === '-37.78523,144.93942'
+      && geometry.paymentSites[1].name === 'Brunswick West',
+      'Payment site positions or coordinate order were lost',
+    );
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['route:t', { kind: 'routePlan', value: sampleRoute }]]));
+    const metadata = host.querySelector('.chat-route-toll-meta').textContent;
+    assert(
+      metadata.includes('System: MELBOURNE CITYLINK') && metadata.includes('Estimated: No')
+      && metadata.includes('Currency: AUD') && metadata.includes('Payment methods: Transponder'),
+      'Validated toll metadata did not appear on screen',
+    );
+    const sites = host.querySelector('.chat-route-payment-sites').textContent;
+    assert(
+      sites.includes('Travancore') && sites.includes('Brunswick West')
+      && sites.includes('-37.78523, 144.93942') && sites.includes('-37.75851, 144.93786'),
+      'Named payment sites or their coordinates were not shown',
+    );
+    view.dispose();
+  }],
+  ['Malformed optional toll metadata and payment sites warn without losing valid details', () => {
+    const route = parseRoutePlan({
+      ...sampleRoute,
+      tolls: [{
+        ...sampleRoute.tolls[0], system: 42, estimate: 'false', payment_methods: ['Transponder', null],
+      }],
+      toll_payment_sites: [...sampleRoute.toll_payment_sites, { name: 'Invalid', position: [181, 0] }],
+    });
+    assert(
+      !route.error && route.incompleteDetails && route.paymentSites.length === 2
+      && route.tolls[0].system === null && route.tolls[0].estimate === null
+      && route.tolls[0].paymentMethods.join() === 'Transponder',
+      'Invalid optional values were coerced or valid details were discarded',
+    );
+    const missing = parseRoutePlan({
+      ...sampleRoute, tolls: [{ name: 'Toll', amount: 0 }], toll_payment_sites: undefined,
+    });
+    assert(
+      !missing.incompleteDetails && !missing.paymentSites.length
+      && missing.tolls[0].estimate === null && !missing.tolls[0].paymentMethods.length,
+      'Missing optional fields were invented or flagged invalid',
+    );
+  }],
+  ['Malformed optional pricing details display a warning while retaining the map', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['route:t', {
+      kind: 'routePlan', value: { ...sampleRoute, tolls: 'invalid' },
+    }]]));
+    assert(
+      host.querySelector('.chat-route-map')
+      && host.querySelector('.chat-tool-fallback').textContent.includes('toll details'),
+      'Incomplete optional pricing was silently hidden or removed the map',
+    );
+    view.dispose();
   }],
   ['Follow-up options are validated and deduplicated', () => {
     assert(followUpOptions({ options: [' Ask ', '', null, 'Ask', 42, 'Other'] }).join() === 'Ask,Other', 'Follow-up validation failed');
@@ -725,6 +881,18 @@ const cases = [
       await waitFor(() => frame.contentDocument?.querySelector('.chat-field'), 'chat initialisation');
       const win = frame.contentWindow;
       const doc = frame.contentDocument;
+      const resizeObservers = new Map();
+      win.ResizeObserver = class extends win.ResizeObserver {
+        constructor(callback) {
+          super(callback);
+          resizeObservers.set(this, callback);
+        }
+
+        disconnect() {
+          resizeObservers.delete(this);
+          super.disconnect();
+        }
+      };
       Object.defineProperty(doc, 'cookie', {
         configurable: true,
         get() { throw new Error('Chat must not read cookies'); },
@@ -942,6 +1110,55 @@ const cases = [
         'AWS Leaflet segment drawing',
       );
       const routeNode = doc.querySelector('.chat-route');
+      assert(
+        routeNode.firstElementChild.classList.contains('chat-route-map'),
+        'Real chat did not render a map-first card',
+      );
+      assert(
+        routeNode.querySelector('.chat-route-total').textContent === '$3.41',
+        'Real chat omitted the compact price total',
+      );
+      assert(
+        routeNode.querySelector('.leaflet-top.leaflet-right .leaflet-control-zoom'),
+        'Map controls did not match the reference position',
+      );
+      assert(win.getComputedStyle(doc.querySelector('.chat-message-sent')).backgroundColor
+        === 'rgb(227, 243, 233)', 'User bubble did not use the reference mint color');
+      assert(
+        win.getComputedStyle(doc.querySelector('.chat-followup')).borderRadius === '999px',
+        'Follow-up actions did not use reference pill styling',
+      );
+      const received = routeNode.closest('.chat-message-received');
+      assert(
+        win.getComputedStyle(received).boxShadow === 'none'
+        && win.getComputedStyle(received).borderRadius === '16px',
+        'Assistant card retained the old bubble shadow or shape',
+      );
+      const originalWidth = frame.style.width;
+      frame.style.width = '390px';
+      win.dispatchEvent(new win.Event('resize'));
+      // Background tabs throttle native resize observations.
+      resizeObservers.forEach((callback, observer) => callback([], observer));
+      const bounds = routeNode.getBoundingClientRect();
+      assert(
+        bounds.width > 250 && bounds.right <= win.innerWidth
+        && routeNode.scrollWidth <= routeNode.clientWidth,
+        'Route card overflowed on mobile',
+      );
+      const endpointsVisible = () => {
+        const mapBounds = routeNode.querySelector('.chat-route-map').getBoundingClientRect();
+        const markers = [...routeNode.querySelectorAll('.chat-route-map [role="img"]')];
+        return markers.length === 4 && markers.every((marker) => {
+          const markerBounds = marker.getBoundingClientRect();
+          return markerBounds.left >= mapBounds.left && markerBounds.right <= mapBounds.right
+            && markerBounds.top >= mapBounds.top && markerBounds.bottom <= mapBounds.bottom;
+        });
+      };
+      await waitFor(endpointsVisible, 'route endpoints visible after mobile resize');
+      frame.style.width = originalWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      resizeObservers.forEach((callback, observer) => callback([], observer));
+      await waitFor(endpointsVisible, 'route endpoints visible after desktop resize');
       const routeRequest = requests.at(-1);
       mode = 'complete';
       doc.querySelector('.chat-followup').click();

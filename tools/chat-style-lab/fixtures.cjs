@@ -134,6 +134,19 @@ exports.routePlan = {
   untolled_distance_km: 15.4,
   currency: 'AUD',
   toll_total: 6.82,
+  tolls: [{
+    name: 'MELBOURNE CITYLINK',
+    system: 'MELBOURNE CITYLINK',
+    currency: 'AUD',
+    amount: 6.82,
+    estimate: false,
+    payment_methods: ['Transponder'],
+  }],
+  toll_roads: [{ name: 'Tullamarine Fwy', number: 'M2' }],
+  toll_payment_sites: [
+    { name: 'Travancore (demo)', position: [144.93942, -37.78523] },
+    { name: 'Brunswick West (demo)', position: [144.93786, -37.75851] },
+  ],
   segments: [
     { tolled: false, points: [[144.96512, -37.8182], [144.9601, -37.8175], [144.951, -37.814]] },
     {

@@ -184,6 +184,43 @@ export function parseRoutePlan(value) {
   }
   const metric = (key) => (typeof value[key] === 'number'
     && Number.isFinite(value[key]) && value[key] >= 0 ? value[key] : null);
+  const currency = typeof value.currency === 'string' && /^[A-Z]{3}$/.test(value.currency)
+    ? value.currency : null;
+  let incompleteDetails = false;
+  const tolls = Array.isArray(value.tolls) ? value.tolls.map((toll) => {
+    if (typeof toll?.name !== 'string' || !toll.name.trim()
+      || typeof toll.amount !== 'number' || !Number.isFinite(toll.amount) || toll.amount < 0
+      || (toll.currency !== undefined
+        && (typeof toll.currency !== 'string' || !/^[A-Z]{3}$/.test(toll.currency)))) return null;
+    const system = typeof toll.system === 'string' && toll.system.trim()
+      ? toll.system.trim() : null;
+    const estimate = typeof toll.estimate === 'boolean' ? toll.estimate : null;
+    const paymentMethods = Array.isArray(toll.payment_methods)
+      ? toll.payment_methods.filter((method) => typeof method === 'string' && method.trim())
+        .map((method) => method.trim()) : [];
+    if ((toll.system !== undefined && system === null)
+      || (toll.estimate !== undefined && estimate === null)
+      || (toll.payment_methods !== undefined && (!Array.isArray(toll.payment_methods)
+        || paymentMethods.length !== toll.payment_methods.length))) incompleteDetails = true;
+    return {
+      name: toll.name.trim(),
+      amount: toll.amount,
+      currency: toll.currency ?? currency,
+      system,
+      estimate,
+      paymentMethods,
+    };
+  }).filter(Boolean) : [];
+  const paymentSites = Array.isArray(value.toll_payment_sites)
+    ? value.toll_payment_sites.filter((site) => typeof site?.name === 'string'
+      && site.name.trim() && validPosition(site.position))
+      .map((site) => ({ name: site.name.trim(), position: site.position })) : [];
+  const tollRoads = Array.isArray(value.toll_roads) ? value.toll_roads.map((road) => {
+    if (typeof road?.name !== 'string' || !road.name.trim()
+      || (road.number !== undefined
+        && (typeof road.number !== 'string' || !road.number.trim()))) return null;
+    return `${road.name.trim()}${road.number ? ` (${road.number.trim()})` : ''}`;
+  }).filter(Boolean) : [];
   return {
     origin: value.origin,
     destination: value.destination,
@@ -193,8 +230,16 @@ export function parseRoutePlan(value) {
     tolledDistance: metric('tolled_distance_km'),
     untolledDistance: metric('untolled_distance_km'),
     toll: metric('toll_total'),
-    currency: typeof value.currency === 'string' && /^[A-Z]{3}$/.test(value.currency)
-      ? value.currency : null,
+    currency,
+    tolls,
+    tollRoads,
+    paymentSites,
+    incompleteDetails: incompleteDetails || (value.tolls !== undefined
+      && (!Array.isArray(value.tolls) || tolls.length !== value.tolls.length))
+      || (value.toll_roads !== undefined
+        && (!Array.isArray(value.toll_roads) || tollRoads.length !== value.toll_roads.length))
+      || (value.toll_payment_sites !== undefined && (!Array.isArray(value.toll_payment_sites)
+        || paymentSites.length !== value.toll_payment_sites.length)),
     assumptions: Array.isArray(value.assumptions)
       ? value.assumptions.filter((assumption) => typeof assumption === 'string' && assumption.trim())
       : [],
@@ -209,10 +254,14 @@ export function routeGeometry(route) {
     segments: route.segments.map((segment) => ({
       tolled: segment.tolled, points: segment.points.map(latLng),
     })),
+    paymentSites: route.paymentSites.map((site) => ({
+      name: site.name, position: latLng(site.position),
+    })),
     bounds: [
       latLng(route.origin.position),
       latLng(route.destination.position),
       ...route.segments.flatMap((segment) => segment.points.map(latLng)),
+      ...route.paymentSites.map((site) => latLng(site.position)),
     ],
   };
 }

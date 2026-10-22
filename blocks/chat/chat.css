@@ -127,6 +127,10 @@
   animation: chat-slide-up 0.3s ease-out;
 }
 
+.chat .chat-dialog:has(.chat-messages:not([hidden])) {
+  background: #fff;
+}
+
 .chat .chat-dialog[open].chat-closing {
   animation: chat-slide-up 0.25s ease-in reverse forwards;
   pointer-events: none;
@@ -381,10 +385,10 @@
   box-sizing: border-box;
   max-width: 75%;
   padding: 12px 18px;
-  border-radius: 18px 18px 4px;
-  border: 1px solid var(--brand-hover-color, #0a6e30);
-  color: #fff;
-  background-color: var(--brand-hover-color, #0a6e30);
+  border-radius: 18px;
+  border: 1px solid transparent;
+  color: #1c1c1c;
+  background-color: #e3f3e9;
 }
 
 .chat .chat-message-received {
@@ -394,10 +398,10 @@
   width: fit-content;
   max-width: 100%;
   padding: 18px 20px;
-  border: 1px solid #dfebe3;
-  border-radius: 6px 22px 22px;
+  border: 1px solid #d8d8d8;
+  border-radius: 16px;
   background-color: #fff;
-  box-shadow: 0 6px 24px rgb(24 59 38 / 5%);
+  box-shadow: none;
   white-space: normal;
 }
 
@@ -405,11 +409,18 @@
   content: 'Linkt Assistant';
   display: block;
   margin-bottom: 10px;
-  color: var(--brand-hover-color, #0a6e30);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
+  color: #555;
+  font-size: 14px;
+  font-weight: 400;
+}
+
+.chat .chat-message-received:has(.chat-route)::before {
+  content: '\2713  Planned your trip';
+  color: #00843d;
+}
+
+.chat .chat-message-received:has(.chat-route-priced)::before {
+  content: '\2713  Priced your trip';
 }
 
 .chat .chat-message-received img {
@@ -448,14 +459,28 @@
   border-top: 1px solid var(--chat-border);
 }
 
+.chat .chat-route {
+  position: relative;
+  overflow: hidden;
+  margin-top: 16px;
+  padding: 0;
+  border: 1px solid #d8d8d8;
+  border-radius: 14px;
+  background: #fff;
+}
+
 .chat .chat-route-map {
   position: relative;
   z-index: 0;
   width: 100%;
-  height: 300px;
-  border: 1px solid var(--chat-border);
-  border-radius: 10px;
-  background: #edf2ee;
+  box-sizing: border-box;
+  height: auto;
+  min-height: 200px;
+  max-height: 360px;
+  aspect-ratio: 7 / 3;
+  border: 0;
+  border-radius: 0;
+  background: #f3f5f4;
 }
 
 .chat .chat-route-map img {
@@ -468,39 +493,163 @@
 
 .chat .chat-route-summary {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 6px 16px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px 16px;
+  margin: 12px 0 0;
+  padding: 12px 0;
+  border-top: 1px solid #d8d8d8;
   font-size: 14px;
 }
 
 .chat .chat-route-summary dd {
   margin: 0;
+  text-align: right;
   font-weight: 700;
 }
 
-.chat .chat-route-legend {
+.chat .chat-route-details {
+  padding: 16px;
+}
+
+.chat .chat-route .chat-route-places {
+  margin: 0;
+  color: #1c1c1c;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1.45;
+}
+
+.chat .chat-route .chat-route-trip-meta {
+  margin: 2px 0 0;
+  color: #555;
+  font-size: 14px;
+}
+
+.chat .chat-route-toll-name {
+  color: #555;
+}
+
+.chat .chat-route-toll-meta,
+.chat .chat-route-site-position {
+  display: block;
+  margin-top: 4px;
+  color: #555;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat .chat-route-total {
+  font-size: 17px;
+}
+
+.chat .chat-route .chat-route-legend {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px 16px;
-  padding-top: 8px;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 12px 0;
+  border-top: 1px solid #d8d8d8;
+  color: #555;
   font-size: 13px;
+}
+
+.chat .chat-route-legend span {
+  position: relative;
+  padding-left: 28px;
 }
 
 .chat .chat-route-legend span::before {
   content: '';
-  display: inline-block;
-  width: 24px;
-  margin-right: 6px;
-  border-top: 4px solid #0e893c;
-  vertical-align: middle;
+  position: absolute;
+  top: 0.7em;
+  left: 0;
+  width: 20px;
+  border-top: 4px solid #00a650;
+  border-radius: 2px;
 }
 
 .chat .chat-route-legend .chat-route-untolled::before {
-  border-top: 4px dashed #495f75;
+  border-top: 4px dashed #5b5b5b;
+}
+
+.chat .chat-route-legend .chat-route-payment::before {
+  top: 0.4em;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 2px solid #00843d;
+  border-radius: 50%;
+}
+
+.chat .chat-route-payment-sites {
+  padding: 12px 0;
+  border-top: 1px solid #d8d8d8;
+}
+
+.chat .chat-route .chat-route-payment-title {
+  margin: 0 0 8px;
+  color: #555;
+  font-size: 14px;
+}
+
+.chat .chat-route .chat-route-payment-list {
+  margin: 0;
+  padding-left: 20px;
+  color: #555;
+  font-size: 14px;
+}
+
+.chat .chat-route-notes {
+  padding-top: 12px;
+  border-top: 1px solid #d8d8d8;
+}
+
+.chat .chat-route-notes :is(.chat-route-assumptions, .chat-route-estimate) {
+  margin: 0;
+  color: #555;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.chat .chat-route-notes .chat-route-estimate:not(:first-child) {
+  margin-top: 4px;
+}
+
+.chat .chat-route-status-ready,
+.chat .chat-followups h3 {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.chat .chat-route-map .leaflet-control-zoom {
+  overflow: hidden;
+  margin: 10px;
+  border: 1px solid #d8d8d8;
+  border-radius: 6px;
+  box-shadow: 0 1px 4px rgb(0 0 0 / 12%);
+}
+
+.chat .chat-route-map :is(.leaflet-control-zoom-in, .leaflet-control-zoom-out) {
+  width: 30px;
+  height: 30px;
+  color: #444;
+  background: #fff;
+  line-height: 30px;
+  text-decoration: none;
+}
+
+.chat .chat-route-map .leaflet-control-attribution {
+  color: #555;
+  background: rgb(255 255 255 / 90%);
+  font-size: 10px;
+  line-height: 1.5;
 }
 
 .chat .chat-route-status,
-.chat .chat-route-estimate,
 .chat .chat-turn-status {
   color: var(--chat-muted);
   font-size: 13px;
@@ -558,18 +707,28 @@
 }
 
 .chat .chat-followup {
-  display: block;
+  display: inline-flex;
   max-width: 100%;
-  margin: 8px 0 0;
-  padding: 10px 14px;
-  border: 1px solid #c1dbcb;
-  border-radius: 12px;
+  margin: 8px 8px 0 0;
+  padding: 6px 12px;
+  border: 1px solid #8ac7a4;
+  border-radius: 999px;
   color: var(--brand-hover-color, #0a6e30);
-  background: #f1f7f3;
+  background: #fff;
   font: inherit;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
   text-align: left;
   white-space: normal;
   cursor: pointer;
+}
+
+.chat .chat-followups {
+  position: relative;
+  margin-top: 8px;
+  padding-top: 0;
+  border-top: 0;
 }
 
 .chat .chat-followup:disabled {
@@ -580,6 +739,11 @@
 .chat .chat-followup:focus-visible {
   outline: 3px solid var(--chat-green);
   outline-offset: 2px;
+}
+
+.chat .chat-followup:hover:not(:disabled) {
+  border-color: #00843d;
+  background: #f1faf5;
 }
 
 .chat .chat-signal {

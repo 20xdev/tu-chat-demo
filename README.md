@@ -205,7 +205,31 @@ Browser requests reveal the client's IP and viewed map area to the tile service.
 A restrictive deployment CSP must permit the pinned CDN scripts/styles and OSM
 tile images; the local mock's API restriction is not relaxed.
 
-Tolled roads use solid green lines; untolled roads use dashed slate lines.
+Route cards follow the local styling references: map first, top-right zoom
+controls, a bold origin/destination title, compact distance/duration, itemized
+backend tolls and a total, road-distance legend, and a muted assumptions footer.
+The map refits the complete route when its dimensions change, including when
+switching between desktop and mobile layouts.
+Optional `tolls` rows require a name and finite nonnegative numeric amount;
+their currency uses an explicit row currency or the route's declared currency.
+Supplied toll `system`, boolean `estimate` (including `false`), and
+`payment_methods` appear below each toll name. Optional `toll_roads` supply
+names and route numbers for the legend. Optional `toll_payment_sites` appear
+as named, hollow map markers and a written list with latitude/longitude;
+their positions are included when fitting map bounds. Invalid
+optional details show an explanatory warning without discarding valid geometry.
+Missing prices, currencies and road names are not fabricated.
+
+AG-UI text deltas from every assistant message are rendered, and `followUps`
+options become buttons. Coordinates are used to draw every supplied segment and
+place origin, destination and payment-site markers. Event/message/tool/thread/run
+identifiers and lifecycle flags correlate the stream; they are not customer-facing
+content. Backend `ok: false` produces a visible unavailable-route message.
+
+Tolled roads use solid green lines; untolled roads use dashed gray lines, retaining
+a non-color distinction and accessible legend descriptions. The map provider and
+attribution remain unchanged. Chat uses pale-mint user bubbles, white outlined
+assistant cards and compact green-outlined follow-up pills, as in the references.
 Written summaries and assumptions remain available if the provider cannot load.
 Follow-up buttons use the normal send flow and conversation UUID, and are
 disabled during requests. Results upsert by tool-call identity within their turn.
