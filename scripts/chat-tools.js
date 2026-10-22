@@ -588,15 +588,54 @@ function helpView(value, host, assetBase, addOptions) {
       } else {
         const title = typeof entry.title === 'string' && entry.title.trim()
           ? entry.title : 'Help video';
+        const embedURL = `https://www.youtube-nocookie.com/embed/${entry.youtubeId}?autoplay=1`;
+        figure.classList.add('chat-help-video');
+        const frame = element('div', 'chat-help-video-frame');
+        const play = element('button', 'chat-help-video-play');
+        play.type = 'button';
+        play.setAttribute('aria-label', `Play video: ${title}`);
+        const icon = element('span', 'chat-help-video-icon');
+        icon.setAttribute('aria-hidden', 'true');
+        play.append(icon, element('strong', 'chat-help-video-title', title), element('span', '', 'Play video'));
+        frame.append(play);
+        const note = element(
+          'p',
+          'chat-help-video-note',
+          'Select Play to load this video from YouTube. YouTube may collect usage data. Video availability has not been verified.',
+        );
+        let player;
+        let active = true;
+        const unavailable = () => {
+          if (!active) return;
+          note.textContent = 'The video could not be loaded here. Use the YouTube link below to watch it.';
+          player?.remove();
+        };
+        const load = () => {
+          if (!active || play.disabled || player) return;
+          player = element('iframe', 'chat-help-video-player');
+          player.title = title;
+          player.allow = 'autoplay; encrypted-media; picture-in-picture; fullscreen';
+          player.allowFullscreen = true;
+          player.referrerPolicy = 'strict-origin-when-cross-origin';
+          player.addEventListener('error', unavailable, { once: true });
+          player.src = embedURL;
+          frame.replaceChildren(player);
+          note.textContent = 'YouTube player requested. If it cannot play here, use the YouTube link below.';
+          player.focus();
+        };
+        play.addEventListener('click', load);
         const link = element('a', 'chat-help-video-link', `${title} (opens YouTube in a new tab)`);
         link.href = resolved.url;
         link.target = '_blank';
         link.rel = 'noopener noreferrer';
-        figure.append(link, element(
-          'p',
-          'chat-help-video-note',
-          'External video reference; availability has not been verified.',
-        ));
+        figure.append(frame, note, link);
+        cleanups.push(() => {
+          active = false;
+          play.removeEventListener('click', load);
+          player?.removeEventListener('error', unavailable);
+          player?.removeAttribute('src');
+          frame.replaceChildren();
+        });
       }
       if (caption) figure.append(element('figcaption', '', caption));
       media.append(figure);
@@ -652,6 +691,7 @@ export default function createToolViews(
             dispose = addOptions(host, options);
           }
         }
+        host.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
         if (previous) previous.host.replaceWith(host);
         else container.append(host);
         views.set(key, { tool, host, dispose });

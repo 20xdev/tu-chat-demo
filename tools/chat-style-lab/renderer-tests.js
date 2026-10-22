@@ -1132,12 +1132,68 @@ const cases = [
     );
     view.dispose();
   }],
-  ['Help video references never load embeds or thumbnails, regardless of consent', () => {
+  ['Video cards require their own Play action before loading embeds or thumbnails', () => {
     const { host, view } = helpViews(sampleHelp);
     [false, true].forEach((consented) => {
       window.dispatchEvent(new CustomEvent('consent.update', { detail: { consented } }));
-      assert(!host.querySelector('iframe,video,img'), 'Third-party media loaded before navigation');
+      assert(!host.querySelector('iframe,video,img'), 'Third-party media loaded before Play');
     });
+    assert(
+      host.querySelector('.chat-help-video-play')?.getAttribute('aria-label')
+        === 'Play video: Tag installation video'
+      && host.querySelector('.chat-help-video-title')?.textContent === 'Tag installation video',
+      'Visible video card lost its accessible play control or title',
+    );
+    view.dispose();
+  }],
+  ['Video players load only on Play, upsert stably, and stop on replacement/disposal', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const value = { ...sampleHelp, media: [sampleHelp.media[2]] };
+    const tools = new Map([['help:video', { kind: 'helpMedia', value }]]);
+    view.setBusy(true);
+    view.update(tools);
+    const play = host.querySelector('.chat-help-video-play');
+    assert(play.disabled && play.type === 'button', 'New busy video card was interactive or submitted a form');
+    play.dispatchEvent(new Event('click'));
+    assert(!host.querySelector('iframe'), 'Busy card loaded a player');
+    view.setBusy(false);
+    play.click();
+    const player = host.querySelector('iframe');
+    assert(
+      player?.src === 'https://www.youtube-nocookie.com/embed/7sT7hg396EQ?autoplay=1'
+      && player.title === 'Tag installation video'
+      && player.referrerPolicy === 'strict-origin-when-cross-origin'
+      && player.allowFullscreen && player.allow.includes('autoplay'),
+      'Play did not create the trusted accessible inline player',
+    );
+    assert(host.querySelector('.chat-help-video-link'), 'Player lost its external fallback link');
+    view.update(tools);
+    assert(host.querySelector('iframe') === player, 'Identical update restarted the player');
+    view.update(new Map([['help:video', {
+      kind: 'helpMedia', value: { ...value, title: 'Updated help' },
+    }]]));
+    assert(!player.hasAttribute('src') && !host.querySelector('iframe'), 'Replacement retained the old player');
+    play.dispatchEvent(new Event('click'));
+    assert(!host.querySelector('iframe'), 'Replaced play control remained interactive');
+    const nextPlay = host.querySelector('.chat-help-video-play');
+    nextPlay.click();
+    const nextPlayer = host.querySelector('iframe');
+    view.dispose();
+    assert(!nextPlayer.hasAttribute('src') && !host.hasChildNodes(), 'Disposal retained the player or source');
+    nextPlay.dispatchEvent(new Event('click'));
+    assert(!host.querySelector('iframe'), 'Disposed card loaded a player');
+  }],
+  ['Video load failures keep a visible explanation and YouTube fallback', () => {
+    const { host, view } = helpViews({ ...sampleHelp, media: [sampleHelp.media[2]] });
+    host.querySelector('.chat-help-video-play').click();
+    host.querySelector('iframe').dispatchEvent(new Event('error'));
+    assert(
+      !host.querySelector('iframe')
+      && host.querySelector('.chat-help-video-note').textContent.includes('could not be loaded')
+      && host.querySelector('.chat-help-video-link').href === 'https://www.youtube.com/watch?v=7sT7hg396EQ',
+      'Player failure was hidden or removed its fallback',
+    );
     view.dispose();
   }],
   ['Configured help images preserve alt/captions, lazy loading and reserved space', () => {
@@ -1626,7 +1682,7 @@ const cases = [
       assert(
         help.querySelector('.chat-help-video-link')?.href === 'https://www.youtube.com/watch?v=7sT7hg396EQ'
         && !help.querySelector('iframe') && doc.querySelectorAll('.chat-followup').length === 3,
-        'Help video or follow-ups were missing, or an unapproved player loaded',
+        'Help video or follow-ups were missing, or a player loaded before Play',
       );
       const helpWidth = frame.style.width;
       [320, 375, 390].forEach((width) => {
@@ -1634,7 +1690,10 @@ const cases = [
         win.dispatchEvent(new win.Event('resize'));
         assert(
           help.scrollWidth <= help.clientWidth
-          && help.getBoundingClientRect().right <= win.innerWidth,
+          && help.getBoundingClientRect().right <= win.innerWidth
+          && help.querySelector('.chat-help-video-frame').getBoundingClientRect().height > 100
+          && help.querySelector('.chat-help-video-play').getBoundingClientRect().width
+            >= help.querySelector('.chat-help-video-frame').clientWidth - 1,
           `Help media overflowed at ${width}px`,
         );
       });

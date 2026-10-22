@@ -102,7 +102,7 @@ per-turn memory (20 events and 64 KiB), never logged or dumped into HTML, and
 produce one unsupported-content notice per assistant turn. Truncation is disclosed.
 Reset/disposal drops retained events and interactive views. Observed `helpMedia`
 events also reuse the existing help renderer for instructions, illustrations
-and external video links.
+and click-to-play video cards.
 
 External prerequisites remain Cognito public-client code/PKCE registration,
 the exact callback origin, supported refresh grants, a registered Hosted UI
@@ -350,12 +350,21 @@ parameters are added to media requests. SVG references are never fetched and
 injected as markup. This stricter policy applies to structured help assets;
 existing Markdown/A2A image attachments retain their previous renderer.
 
-Video handling is deliberately **external links only**, as approved. Valid
-11-character YouTube IDs create `https://www.youtube.com/watch?v=...` links
-labelled with the title and new-tab behaviour, with `noopener noreferrer`.
-No iframe, player, autoplay, thumbnail, or YouTube request is created by chat,
-regardless of the demo consent state. Video availability is explicitly
-unverified. The existing default-declined consent stub is unchanged.
+Videos appear as responsive **click-to-play cards** with a locally styled play
+icon, supplied title and privacy notice. No remote thumbnail, player or YouTube
+request is created until the user selects Play; unrelated consent events do
+not start playback. Only validated 11-character YouTube IDs can create players.
+Clicking Play loads `https://www.youtube-nocookie.com/embed/{id}?autoplay=1`
+inside the card, with an accessible title, fullscreen support and an origin-only
+cross-origin referrer. No chat text, account data, tokens or credentials are
+added to the embed URL. Playback depends on YouTube availability/embedding rights;
+availability is not assumed or verified. A persistent new-tab YouTube link
+(`noopener noreferrer`) remains available if playback fails or is blocked.
+Restrictive deployment CSPs must permit `https://www.youtube-nocookie.com` in
+`frame-src`. Reset, retry, tool replacement and disposal remove the player and
+its source. Busy chat state disables Play until the request finishes.
+The existing default-declined consent stub is unchanged; the explicit Play
+action controls loading for that card.
 
 ### Rollback
 
