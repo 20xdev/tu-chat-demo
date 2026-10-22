@@ -181,7 +181,50 @@ const routeEvents = (value) => [
   completed,
 ].map((result) => ({ result }));
 
+exports.statementCard = {
+  found: true,
+  statement_id: 'DEMO-STATEMENT-2026-09',
+  statement_date: '2026-09-25',
+  period: { from: '2026-08-25', to: '2026-09-24' },
+  opening_balance: { amount_aud: 10, position: 'owing' },
+  payments_received_aud: 10,
+  trip_charges_aud: 5,
+  fees_and_adjustments_aud: 0.24,
+  fees_and_adjustments_label: 'Demo card surcharge',
+  video_matching_fees_aud: 0,
+  total_charged_aud: 5.24,
+  gst_included_aud: 0.48,
+  closing_balance: { amount_aud: 5.24, position: 'owing' },
+  trip_count: 1,
+  status: 'Due',
+  due_on: '2026-10-09',
+  paid_on: null,
+  lines: [
+    {
+      charged: '2026-09-02', type: 'trip', details: 'Fictional demo toll trip', amount_aud: 5, trip_id: 'DEMO-TRIP-1', start: '7:41am', finish: '7:45am', by: 'Demo tag A',
+    },
+    {
+      charged: '2026-09-08', type: 'payment', details: 'Fictional demo payment', amount_aud: -10,
+    },
+    {
+      charged: '2026-09-08', type: 'adjustment', details: 'Demo card surcharge', amount_aud: 0.24,
+    },
+  ],
+  trip_charges_by_tag: { 'Demo tag A': 5, 'Demo spare tag': 0 },
+  notes: ['LOCAL DEMO: fictional statement data, not a customer account or payment request.'],
+};
+
 exports.eventFixtures = {
+  'agui-statement': [
+    { type: 'TOOL_CALL_START', toolCallId: 'demo-statement', toolCallName: 'get_statement_details' },
+    { type: 'CUSTOM', name: 'statementCard', value: { ...exports.statementCard, toolCallId: 'demo-statement' } },
+    { type: 'TOOL_CALL_END', toolCallId: 'demo-statement' },
+    { type: 'TEXT_MESSAGE_START', messageId: 'demo-statement-answer', role: 'assistant' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: 'demo-statement-answer', delta: 'This is a fictional statement for local visual testing. All supplied statement details appear below.' },
+    { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'demo-statement-followups', options: ['Why were trips matched by plate?', 'Check my recent trips', 'Explain a specific trip'] } },
+    { type: 'TEXT_MESSAGE_END', messageId: 'demo-statement-answer' },
+    { type: 'RUN_FINISHED', threadId: 'demo-statement-thread', runId: 'demo-statement-run' },
+  ],
   'agui-route': [
     { type: 'TEXT_MESSAGE_START', messageId: 'demo-preface', role: 'assistant' },
     { type: 'TEXT_MESSAGE_CONTENT', messageId: 'demo-preface', delta: "I'll price that drive for you." },

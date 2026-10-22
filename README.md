@@ -166,6 +166,7 @@ separately from the legacy A2A adapter. These custom events feed the same render
 
 ```json
 {"type":"CUSTOM","name":"routePlan","value":{"toolCallId":"route-1","ok":true}}
+{"type":"CUSTOM","name":"statementCard","value":{"toolCallId":"statement-1","found":true,"statement_id":"DEMO-STATEMENT","statement_date":"2026-09-25"}}
 {"type":"CUSTOM","name":"followUps","value":{"toolCallId":"followups-1","options":["Check a different route","Plan another trip"]}}
 ```
 
@@ -173,9 +174,23 @@ The route example is abbreviated and requires the full geometry described below.
 Cards upsert by event name and `value.toolCallId`; identical repeated results keep
 their existing views. Tool completion and later text do not remove the map or
 suggestions. The unsupported-content notice appears only for unrecognized custom
-names, not `routePlan` or `followUps`. AG-UI help-media mapping remains unverified;
+names, not `routePlan`, `statementCard` or `followUps`. AG-UI help-media mapping remains unverified;
 the existing A2A help-media support is unchanged. The local lab's **AWS AG-UI route
 + follow-ups** scenario exercises the raw event format using fictional demo data.
+The **AWS AG-UI statement + follow-ups** scenario uses fictional statement data;
+no customer attachment is committed to the fixtures.
+
+`statementCard` renders the statement ID/date/period, status and due/paid dates,
+opening and closing balances with their supplied positions, payments received,
+trip charges/count, fees and their label, reported video matching fees, included
+GST and total charged. It preserves the backend totals without adding fee fields
+again or inventing a reconciliation. All amounts use AUD as specified by the
+`*_aud` fields, including negative payments and zero balances.
+Transaction rows retain charged dates, types, descriptions, amounts, trip IDs,
+start/finish times and tag/plate attribution. Tag charge breakdowns retain zero
+entries; all supplied notes are shown as plain text. Invalid dates or numeric
+strings are not coerced; usable fields remain visible with an explicit warning.
+`found: false` produces an unavailable-statement message, not an empty success card.
 
 Recognised data parts use:
 

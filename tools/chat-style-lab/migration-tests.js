@@ -427,6 +427,26 @@ const cases = [
     assert(state.tools.size === 3, 'Independent calls or kinds overwrote each other');
     assert(createAGUITurn('other').tools.size === 0, 'Tool state leaked into another turn');
   }],
+  ['Observed statementCard events upsert, complete without text and do not consume unknown retention', async () => {
+    const state = createAGUITurn('thread');
+    const value = {
+      toolCallId: 'statement-1', found: true, statement_id: 'DEMO-STATEMENT', total_charged_aud: 5.24,
+    };
+    const event = { type: 'CUSTOM', name: 'statementCard', value };
+    applyAGUIEvent(state, event);
+    const first = state.tools.get('statementCard:statement-1');
+    applyAGUIEvent(state, JSON.parse(JSON.stringify(event)));
+    assert(state.tools.get('statementCard:statement-1') === first, 'Identical statement result recreated the view');
+    await readAGUIStream(stream([
+      { ...event, value: { ...value, total_charged_aud: 7.24 } },
+    ]), state, () => {});
+    assert(
+      state.tools.size === 1 && state.tools.get('statementCard:statement-1').value.total_charged_aud === 7.24
+      && state.outcome === 'completed' && !aguiNotice(state),
+      'Statement-only EOF failed or showed an unsupported notice',
+    );
+    assert(state.customEvents.length === 0 && state.customBytes === 0, 'Known statement consumed unknown retention');
+  }],
   ['AG-UI tool-only clean EOF retains recognized interactive content', async () => {
     const state = createAGUITurn('thread');
     await readAGUIStream(stream([
@@ -438,7 +458,7 @@ const cases = [
     );
   }],
   ['AG-UI recognized custom events require explicit tool-call identity', async () => {
-    await Promise.all(['routePlan', 'followUps'].flatMap((name) => [
+    await Promise.all(['routePlan', 'statementCard', 'followUps'].flatMap((name) => [
       null, {}, { toolCallId: '' }, { toolCallId: 42 },
     ].map((value) => rejects(() => readAGUIStream(stream([{ type: 'CUSTOM', name, value }]), createAGUITurn('thread'), () => {}), 'tool call ID'))));
   }],

@@ -33,6 +33,7 @@ const questions = {
   media: 'Show image attachments, base64 images, SVG and icons.',
   route: 'Show me the map from Flinders Street to the airport.',
   'agui-route': 'Show a route and follow-up buttons from AWS AG-UI events.',
+  'agui-statement': 'Show a fictional statement card and follow-up buttons from AWS AG-UI events.',
   help: 'Show me how to install a Linkt tag on my windscreen. Include installation pictures or illustrated steps if available.',
   'help-not-found': 'Show help instructions when media is unavailable.',
   'help-invalid': 'Show invalid help media without losing valid instructions.',

@@ -60,6 +60,45 @@ const sampleRoute = {
   ],
   assumptions: ['Not a live quote'],
 };
+const sampleStatement = {
+  found: true,
+  statement_id: 'DEMO-STATEMENT-2026-09',
+  statement_date: '2026-09-25',
+  period: { from: '2026-08-25', to: '2026-09-24' },
+  opening_balance: { amount_aud: 10, position: 'owing' },
+  payments_received_aud: 10,
+  trip_charges_aud: 17.5,
+  fees_and_adjustments_aud: 0.24,
+  fees_and_adjustments_label: 'Demo surcharge',
+  video_matching_fees_aud: 3,
+  total_charged_aud: 17.74,
+  gst_included_aud: 1.61,
+  closing_balance: { amount_aud: 17.74, position: 'owing' },
+  trip_count: 7,
+  status: 'Due',
+  due_on: '2026-10-09',
+  paid_on: null,
+  lines: [
+    ...Array.from({ length: 7 }, (_, index) => ({
+      charged: `2026-09-0${index + 1}`,
+      type: 'trip',
+      details: `Fictional trip ${index + 1}`,
+      amount_aud: 2.5,
+      trip_id: `DEMO-TRIP-${index + 1}`,
+      start: '7:41am',
+      finish: '7:45am',
+      by: index < 3 ? 'Demo tag A' : 'Matched by plate',
+    })),
+    {
+      charged: '2026-09-08', type: 'payment', details: 'Demo payment', amount_aud: -10,
+    },
+    {
+      charged: '2026-09-08', type: 'adjustment', details: 'Demo surcharge', amount_aud: 0.24,
+    },
+  ],
+  trip_charges_by_tag: { 'Demo tag A': 7.5, 'Demo spare tag': 0, 'Matched by plate': 10 },
+  notes: ['Fictional statement for testing.', 'Backend totals must not be recalculated.'],
+};
 const helpBase = 'https://assets.example.invalid/help/tags/';
 const sampleHelp = {
   found: true,
@@ -533,6 +572,102 @@ const cases = [
     );
     view.dispose();
   }],
+  ['Statement cards render all balances, transaction fields, tag charges and notes', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['statement:s', { kind: 'statementCard', value: sampleStatement }]]));
+    const card = host.querySelector('.chat-statement');
+    const facts = [...card.querySelectorAll('.chat-statement-summary:first-of-type dt')]
+      .map((label) => [label.textContent, label.nextElementSibling.textContent]);
+    const factMap = new Map(facts);
+    assert(
+      factMap.get('Total charged') === '$17.74'
+      && factMap.get('Video matching fees (reported)') === '$3.00'
+      && factMap.get('Opening balance') === '$10.00 (owing)'
+      && factMap.get('Closing balance') === '$17.74 (owing)',
+      'Statement balances were lost or fees were added to the supplied total',
+    );
+    assert(
+      factMap.get('Payments received') === '$10.00' && factMap.get('Trip charges') === '$17.50'
+      && factMap.get('Demo surcharge') === '$0.24' && factMap.get('GST included') === '$1.61'
+      && factMap.get('Trips') === '7' && factMap.get('Status') === 'Due'
+      && factMap.get('Due date') === '9 Oct 2026'
+      && factMap.get('Statement period') === 'From 25 Aug 2026 to 24 Sept 2026',
+      'Statement summary omitted supplied fields',
+    );
+    const rows = card.querySelectorAll('tbody tr');
+    assert(rows.length === 9 && rows[7].textContent.includes('-$10.00'), 'Transaction rows or negative payment were lost');
+    ['DEMO-TRIP-1', '7:41am', '7:45am', 'Demo tag A', 'Type: trip'].forEach((value) => {
+      assert(rows[0].textContent.includes(value), `Missing transaction detail: ${value}`);
+    });
+    assert(
+      card.querySelector('.chat-statement-id').textContent === sampleStatement.statement_id
+      && card.querySelector('.chat-statement-title').textContent.includes('25 Sept 2026')
+      && card.querySelector('.chat-statement-tags').textContent.includes('Demo spare tag$0.00')
+      && card.querySelectorAll('.chat-statement-notes li').length === 2,
+      'Statement identity, zero-value spare tag or notes were dropped',
+    );
+    assert(!card.querySelector('.chat-tool-fallback'), 'Valid statement was marked incomplete');
+    const original = card;
+    view.update(new Map([['statement:s', { kind: 'statementCard', value: sampleStatement }]]));
+    // Tool identity, rather than value identity, controls replacement.
+    assert(host.querySelectorAll('.chat-statement').length === 1, 'Repeated statement duplicated the card');
+    assert(original !== host.querySelector('.chat-statement'), 'Updated tool object was not rendered');
+    view.dispose();
+    assert(!host.hasChildNodes(), 'Statement remained after disposal');
+  }],
+  ['Statements preserve paid/credit/zero states and treat supplied markup as plain text', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const markup = '<img src=x onerror=alert(1)>';
+    view.update(new Map([['statement:s', {
+      kind: 'statementCard',
+      value: {
+        ...sampleStatement,
+        statement_id: markup,
+        status: 'Paid',
+        paid_on: '2026-10-01',
+        closing_balance: { amount_aud: 0, position: 'credit' },
+        lines: [{ ...sampleStatement.lines[0], details: markup, by: markup }],
+        trip_charges_by_tag: { [markup]: 0 },
+        notes: [markup],
+      },
+    }]]));
+    assert(
+      !host.querySelector('img,script') && host.textContent.includes(markup)
+      && host.textContent.includes('1 Oct 2026') && host.textContent.includes('$0.00 (credit)'),
+      'Statement labels became markup or valid paid/credit/zero data was lost',
+    );
+    view.dispose();
+  }],
+  ['Malformed or unavailable statements show explicit fallbacks without inventing amounts', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    [null, { found: false }].forEach((value) => {
+      view.update(new Map([['statement:s', { kind: 'statementCard', value }]]));
+      assert(host.textContent.includes('Statement information is unavailable.'), 'Missing statement became a fake card');
+    });
+    view.update(new Map([['statement:s', {
+      kind: 'statementCard',
+      value: {
+        ...sampleStatement,
+        statement_date: '2026-02-30',
+        total_charged_aud: '17.74',
+        trip_count: '7',
+        notes: {},
+        trip_charges_by_tag: { Invalid: '0' },
+        lines: [null, { ...sampleStatement.lines[0], amount_aud: '2.50' }],
+      },
+    }]]));
+    assert(
+      host.querySelector('.chat-tool-fallback').textContent.includes('incomplete or invalid')
+      && host.textContent.includes('Amount unavailable')
+      && !host.textContent.includes('NaN') && !host.textContent.includes('Invalid Date'),
+      'Malformed values were coerced or silently discarded',
+    );
+    assert(host.querySelectorAll('tbody tr').length === 1, 'Valid transaction details were discarded with a bad amount');
+    view.dispose();
+  }],
   ['Follow-up options are validated and deduplicated', () => {
     assert(followUpOptions({ options: [' Ask ', '', null, 'Ask', 42, 'Other'] }).join() === 'Ask,Other', 'Follow-up validation failed');
   }],
@@ -973,6 +1108,20 @@ const cases = [
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
+        if (mode === 'statement') {
+          const card = {
+            type: 'CUSTOM', name: 'statementCard', value: { ...sampleStatement, toolCallId: 'aws-statement' },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-statement', toolCallName: 'get_statement_details' },
+            card,
+            card,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-statement' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Your fictional statement is ready.' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'statement-followups', options: ['Why were trips matched by plate?', 'Check my recent trips', 'Explain a specific trip'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -1099,6 +1248,39 @@ const cases = [
         .getAttribute('aria-busy') === 'false', 'progress failure');
       assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Failed tool progress stayed visible');
       assert(!doc.querySelector('.chat-loading-status'), 'Failure retained a loading indicator');
+      mode = 'statement';
+      doc.querySelector('.chat-reset').click();
+      await submit('Show my latest statement');
+      const statement = doc.querySelector('.chat-statement');
+      assert(statement && doc.querySelectorAll('.chat-statement').length === 1, 'Statement card was missing or duplicated');
+      assert(statement.querySelectorAll('tbody tr').length === 9, 'Statement transactions were not rendered in real chat');
+      assert(
+        !doc.querySelector('.chat-turn-status:not([hidden])')
+        && !statement.querySelector('.chat-tool-fallback'),
+        'Supported statement showed an unsupported or malformed-content warning',
+      );
+      assert(doc.querySelectorAll('.chat-followup').length === 3, 'Statement follow-up options were lost');
+      const statementWidth = frame.style.width;
+      frame.style.width = '390px';
+      win.dispatchEvent(new win.Event('resize'));
+      assert(
+        statement.getBoundingClientRect().right <= win.innerWidth
+        && statement.scrollWidth <= statement.clientWidth,
+        'Statement card overflowed on mobile',
+      );
+      frame.style.width = statementWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const statementRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelector('.chat-followup').click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'statement follow-up request');
+      assert(
+        requests.at(-1).request.messages[0].content === 'Why were trips matched by plate?'
+        && requests.at(-1).request.threadId === statementRequest.request.threadId
+        && requests.at(-1).session === statementRequest.session && statement.isConnected,
+        'Statement follow-up changed context or removed the card',
+      );
       mode = 'route';
       doc.querySelector('.chat-reset').click();
       await submit('Show the AWS route');

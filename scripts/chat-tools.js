@@ -213,6 +213,152 @@ function routeView(value, host) {
   return dispose;
 }
 
+function statementView(value, host) {
+  if (value?.found !== true) {
+    host.append(element('p', 'chat-tool-fallback', 'Statement information is unavailable.'));
+    return;
+  }
+  host.classList.add('chat-statement');
+  let incomplete = false;
+  const currency = new Intl.NumberFormat('en-AU', { style: 'currency', currency: 'AUD' });
+  const dates = new Intl.DateTimeFormat('en-AU', {
+    day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC',
+  });
+  function text(input) {
+    if (input === undefined) return null;
+    if (typeof input === 'string' && input.trim()) return input.trim();
+    incomplete = true;
+    return null;
+  }
+  function money(input) {
+    if (input === undefined) return null;
+    if (typeof input === 'number' && Number.isFinite(input)) return currency.format(input);
+    incomplete = true;
+    return null;
+  }
+  function date(input) {
+    if (input === undefined || input === null) return null;
+    if (typeof input === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(input)) {
+      const parsed = new Date(`${input}T00:00:00Z`);
+      if (Number.isFinite(parsed.getTime()) && parsed.toISOString().slice(0, 10) === input) {
+        return dates.format(parsed);
+      }
+    }
+    incomplete = true;
+    return null;
+  }
+  function balance(input) {
+    if (input === undefined) return null;
+    const amount = money(input?.amount_aud);
+    const position = text(input?.position);
+    if (amount === null) incomplete = true;
+    return amount === null ? null : `${amount}${position ? ` (${position})` : ''}`;
+  }
+  const id = text(value.statement_id);
+  const issued = date(value.statement_date);
+  if (!id || !issued) incomplete = true;
+  host.append(element('h3', 'chat-statement-title', issued ? `Statement \u00b7 ${issued}` : 'Statement'));
+  if (id) host.append(element('p', 'chat-statement-id', id));
+  host.append(element('p', 'chat-statement-currency', 'All amounts in AUD.'));
+  const summary = element('dl', 'chat-statement-summary');
+  function fact(label, content) {
+    if (content !== null && content !== undefined) {
+      summary.append(element('dt', '', label), element('dd', '', content));
+    }
+  }
+  const from = date(value.period?.from);
+  const to = date(value.period?.to);
+  if (value.period !== undefined && (!from || !to)) incomplete = true;
+  if (from || to) fact('Statement period', [from && `From ${from}`, to && `to ${to}`].filter(Boolean).join(' '));
+  fact('Status', text(value.status));
+  fact('Due date', date(value.due_on));
+  fact('Paid on', date(value.paid_on));
+  fact('Opening balance', balance(value.opening_balance));
+  fact('Payments received', money(value.payments_received_aud));
+  fact('Trip charges', money(value.trip_charges_aud));
+  fact(text(value.fees_and_adjustments_label) || 'Fees and adjustments', money(value.fees_and_adjustments_aud));
+  fact('Video matching fees (reported)', money(value.video_matching_fees_aud));
+  fact('GST included', money(value.gst_included_aud));
+  fact('Total charged', money(value.total_charged_aud));
+  fact('Closing balance', balance(value.closing_balance));
+  if (value.trip_count !== undefined) {
+    if (Number.isInteger(value.trip_count) && value.trip_count >= 0) fact('Trips', String(value.trip_count));
+    else incomplete = true;
+  }
+  host.append(summary);
+  if (Array.isArray(value.lines) && value.lines.length) {
+    const region = element('div', 'chat-statement-table');
+    region.setAttribute('role', 'region');
+    region.setAttribute('aria-label', 'Statement transaction details');
+    region.tabIndex = 0;
+    const table = element('table', 'chat-statement-lines');
+    table.append(element('caption', '', 'Statement transactions'));
+    const head = element('thead');
+    const headings = element('tr');
+    ['Charged', 'Details', 'Amount'].forEach((label) => {
+      const cell = element('th', 'chat-statement-cell', label);
+      cell.scope = 'col';
+      headings.append(cell);
+    });
+    head.append(headings);
+    const body = element('tbody');
+    value.lines.forEach((line) => {
+      if (!line || typeof line !== 'object' || Array.isArray(line)) {
+        incomplete = true;
+        return;
+      }
+      const charged = date(line.charged);
+      const description = text(line.details);
+      const amount = money(line.amount_aud);
+      if (!charged || !description || amount === null) incomplete = true;
+      const row = element('tr');
+      const details = element('td', 'chat-statement-cell', description || 'Details unavailable');
+      [
+        ['Type', line.type], ['Trip ID', line.trip_id], ['Start', line.start],
+        ['Finish', line.finish], ['Charged by', line.by],
+      ].forEach(([label, input]) => {
+        const content = text(input);
+        if (content) details.append(element('small', 'chat-statement-line-meta', `${label}: ${content}`));
+      });
+      row.append(
+        element('td', 'chat-statement-cell', charged || 'Date unavailable'),
+        details,
+        element('td', 'chat-statement-cell', amount === null ? 'Amount unavailable' : amount),
+      );
+      body.append(row);
+    });
+    table.append(head, body);
+    region.append(table);
+    host.append(region);
+  } else if (value.lines !== undefined && !Array.isArray(value.lines)) incomplete = true;
+  if (value.trip_charges_by_tag !== undefined) {
+    if (value.trip_charges_by_tag && typeof value.trip_charges_by_tag === 'object'
+      && !Array.isArray(value.trip_charges_by_tag)) {
+      const breakdown = element('dl', 'chat-statement-summary chat-statement-tags');
+      Object.entries(value.trip_charges_by_tag).forEach(([tag, amount]) => {
+        const label = text(tag);
+        const charge = money(amount);
+        if (label && charge !== null) breakdown.append(element('dt', '', label), element('dd', '', charge));
+        else incomplete = true;
+      });
+      if (breakdown.hasChildNodes()) {
+        host.append(element('h4', 'chat-statement-subtitle', 'Trip charges by tag'), breakdown);
+      }
+    } else incomplete = true;
+  }
+  if (Array.isArray(value.notes)) {
+    const notes = element('ul', 'chat-statement-notes');
+    value.notes.forEach((input) => {
+      const note = text(input);
+      if (note) notes.append(element('li', '', note));
+    });
+    if (notes.hasChildNodes()) host.append(element('h4', 'chat-statement-subtitle', 'Statement notes'), notes);
+  } else if (value.notes !== undefined) incomplete = true;
+  if (incomplete) {
+    host.append(element('p', 'chat-tool-fallback', 'Some statement details could not be displayed because the supplied data is incomplete or invalid.'));
+  }
+}
+
 function helpView(value, host, assetBase) {
   const help = parseHelpMedia(value);
   const cleanups = [];
@@ -295,6 +441,7 @@ export default function createToolViews(
         const host = element('section', 'chat-tool');
         let dispose = () => {};
         if (tool.kind === 'routePlan') dispose = routeView(tool.value, host);
+        if (tool.kind === 'statementCard') statementView(tool.value, host);
         if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase);
         if (tool.kind === 'followUps') {
           host.classList.add('chat-followups');
