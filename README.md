@@ -26,10 +26,91 @@ With a conversation in progress, resize from desktop to mobile and back; verify
 that messages reflow and the close button and composer remain within the visible
 viewport, including when the mobile keyboard changes the available space.
 
+### Chat configuration and authentication
+
+The chat now loads its public configuration from
+`https://main--tu-chat-demo--20xdev.aem.page/config.json`, using
+`scripts/chat-config.js`. There was no AIO browser-config loader or Cognito
+implementation in this branch; its old direct A2A proxy flow has been migrated
+to the supplied AG-UI frontdoor contract. There is no AIO fallback.
+
+Sheet rows map generically into the ten public fields: `authorizationEndpoint`,
+`tokenEndpoint`, `logoutEndpoint`, `clientId`, `redirectUri`, `scope`,
+`agentEndpoint`, `responseType`, `codeChallengeMethod`, and `protocol`.
+Required values, duplicate/unsafe keys, row types, complete pagination, HTTPS
+URLs, callback origin, `code`, `S256`, `ag-ui`, and `openid` are validated before
+login or chat can proceed. Unknown settings do not enter application state.
+Exact callback and encoded AWS endpoint strings are retained. The credential-free
+sheet request is shared across initialization paths; failed loads can be retried.
+
+`scripts/chat-auth.js` implements public-client Authorization Code + PKCE with
+Web Crypto, independent random state/verifier, a ten-minute session-scoped pending
+transaction, root callback handling, one-time consumption and callback cleanup.
+Only the owned `tu-chat.pkce.v1` transaction is stored in session storage.
+Access/refresh tokens remain in memory, are never stored in cookies or browser
+storage, and are not logged. Reloading requires signing in again. Expiring access
+tokens use a deduplicated standard refresh grant when available; failed refresh
+requires sign-in. `CHAT_ACCESS_TOKEN` is no longer read or required, and
+`X-Chat-Access-Token` is never sent. No client secret or replacement shared secret
+is used.
+
+The published callback currently belongs to the `main` preview origin. Other
+branches, localhost and the live origin deliberately show an actionable
+configuration error if their origin differs. They cannot silently substitute a
+callback. To enable another real frontend, its callback must be registered with
+the provider and represented in approved configuration. The local mock lab below
+does not use real Cognito authentication.
+
+No registered sign-out destination exists in project configuration. **Sign out
+is local only**: it clears owned authentication/conversation state and warns that
+Cognito single-sign-on may remain active. The configured Hosted UI logout
+endpoint is retained, but no unregistered logout destination is guessed.
+
+`scripts/chat-agui.js` sends only the newest user message directly to the
+sheet's `agentEndpoint`, with bearer **access-token** authentication, omitted
+browser credentials, and a stable runtime-session UUID header. Threads and
+sessions persist until reset; run/message UUIDs are fresh per send. The AG-UI
+body contains `threadId`, `runId`, `state`, `messages`, `tools`, `context` and
+`forwardedProps`, never an A2A JSON-RPC envelope. A real HTTP 401 permits one
+refresh/retry before reading output, preserving run/message IDs. Error text
+containing "401" never triggers refresh; partial streams are not replayed.
+
+The adapter supports text deltas, tool progress, run errors, optional lifecycle
+events and clean text-only stream closure. Incremental SSE framing is shared
+with the retained A2A adapter. Malformed/failed streams produce visible errors
+while preserving earlier text. Markdown tables, images and sanitised SVG in text
+continue through the existing response renderer.
+Gaps after tool completion retain the loading indicator until an answer arrives.
+Failures clear obsolete progress; rejected non-SSE response bodies are cancelled,
+and a missing response stream has an explicit error.
+
+**AG-UI rich-content mapping is deferred.** Existing A2A map/help/follow-up
+fixtures do not establish AG-UI CUSTOM names or schemas. Unknown CUSTOM events
+are held only in bounded per-turn memory (20 events and 64 KiB), never logged or
+dumped into HTML, and produce one unsupported-content notice per assistant turn.
+Truncation is disclosed. Reset/disposal drops retained events. The map, media and
+button components and A2A event adapter remain independently tested, but are not
+fed guessed AG-UI payloads.
+
+External prerequisites remain Cognito public-client code/PKCE registration,
+the exact callback origin, supported refresh grants, a registered Hosted UI
+sign-out destination if required, and Cognito/AWS browser CORS. The AWS frontdoor
+must accept Authorization, Content-Type, Accept and
+`X-Amzn-Bedrock-AgentCore-Runtime-Session-Id` and return SSE. Mock tests do not
+verify customer login, provider CORS, or an authenticated AG-UI media contract.
+
+Browser validation from `http://localhost:3000` observed the published sheet
+blocked by CORS: its response did not include `Access-Control-Allow-Origin`.
+The loader reports this failure and leaves chat disabled. Local style testing
+must use the isolated fixture lab, not a weakened production loader. Same-origin
+sheet loading on the configured `main` frontend does not require cross-origin
+sheet permission.
+
 ### Chat response images
 
-The renderer accepts text/Markdown and standard A2A `file` parts in streamed
-artifacts, messages, and status messages. Text can contain Markdown image syntax,
+The renderer accepts text/Markdown and retains support for standard A2A `file`
+parts in the independently tested legacy adapter. The current AG-UI flow supplies
+text deltas, not A2A attachments. Text can contain Markdown image syntax,
 HTML `<img>` tags, or raw SVG artwork. SVG inside a fenced code block stays code.
 Image URLs may be relative or HTTP(S); data URLs are accepted for the supported
 image types below. Ordinary hyperlinks are not automatically embedded.
@@ -57,17 +138,16 @@ uncontracted `data`-part schemas are not interpreted. Invalid image attachments
 and image load failures show an explanatory text fallback. Data URLs must be
 allowed by the deployed `img-src` policy to display inline images.
 
-### Structured routes and follow-ups
+### Retained A2A route and follow-up components
 
-The existing A2A 0.3 `message/stream` URL and cookie-based
-`X-Chat-Access-Token` authentication are unchanged. `scripts/chat-stream.js`
-adapts task snapshots, status messages, artifacts, and direct messages into
+This section describes the retained A2A contracts and reusable components, not
+a verified AG-UI rich-content integration. `scripts/chat-stream.js`
+adapts A2A task snapshots, status messages, artifacts, and direct messages into
 per-turn state. It retains structured tool results when final answer artifacts
 replace provisional text. Artifact `lastChunk` is tracked separately from task
 completion. A stream closing without a completion/action-required state retains
 partial content and shows the existing interruption/retry UI; `[DONE]` alone is
 not A2A completion. A direct A2A message is a complete message response.
-Adobe may buffer the response; the loading indicator does not promise live tokens.
 
 Recognised data parts use:
 
@@ -107,7 +187,8 @@ remains in-memory only; this feature does not add persistence or simultaneous se
 
 ### Illustrated help and video references
 
-`helpMedia` is collected from the same status, artifact, task and message parts.
+In the retained A2A adapter, `helpMedia` is collected from status, artifact, task
+and message parts; no AG-UI CUSTOM mapping is assumed.
 Cards are retained alongside the final text answer and upserted per tool-call ID
 within their assistant turn. Only the boolean `found: true` enables media.
 Valid instructions remain readable for unsuccessful or malformed results.
@@ -242,30 +323,32 @@ service. It requires Node.js 18 or newer and has no additional dependencies.
    This toggle controls only the remaining experimental overrides, not the
    selected cosmetic styles already included in the application stylesheet.
 
-The fixtures cover a route image and journey summary, pass comparisons, a notice
-checklist, missing-image fallback, slow streaming, and a failed request that
-succeeds on retry. **Image files, base64, SVG + icons** also exercises mixed
-text/file parts and intentional invalid attachments. All values are fictional.
-Do not enter real personal or payment information.
-The structured-route scenarios exercise status-message route data, replacement
-answer artifacts, repeated tool results, follow-ups, invalid geometry, premature
-stream closure and JSON-RPC errors. Normal fixtures end with an A2A completed
-status, not a custom `[DONE]` marker. Route coordinates are illustrative, not
-real routing advice. These scenarios load the approved external map tiles.
-Help scenarios cover instructions/video references with unconfigured images,
-`found: false`, invalid entries, and text-only mentions that must not fabricate
-media. The referenced video is not fetched or verified by the lab.
+The preview explicitly starts a **synthetic local session**, not a real Cognito
+login. It covers Markdown journey images, comparisons/checklists, image failures,
+slow streams, HTTP failure/retry, AG-UI errors and a synthetic arbitrary CUSTOM
+event. There are no verified AG-UI map/media examples. All values are fictional;
+do not enter personal or payment information.
+
+The original A2A fixture endpoint and rich-content fixtures remain available for
+independent adapter/component regression checks, not as a production fallback.
+Those checks cover map geometry, help illustrations, captions, media validation
+and follow-up callbacks. Synthetic CUSTOM fixtures are explicitly not observed
+AWS media responses. The referenced video is not fetched or verified.
 
 After restarting the style lab, open
 **http://localhost:3100/__mock/renderer-tests.html** for repeatable renderer checks.
-They check the application renderer, request/SSE adapter, route validation,
-follow-ups, help-card state, trusted media URLs, and external-only video behaviour
-using fixtures, not the live chat API.
+They check sheet loading/validation, real PKCE helper logic with mocked token
+responses, callback/refresh/logout paths, AG-UI requests and SSE, bounded CUSTOM
+retention, the real block with synthetic authentication, responsive sizing and
+the retained A2A renderer/component contracts. They do not call the live chat API.
+There is no build step or build script; use the existing lint commands and these
+native-browser tests.
 To run a separate lab instance without stopping an existing
 one, use `CHAT_STYLE_LAB_PORT=3101 npm run dev:chat` and open the corresponding port.
 
 The lab binds to loopback only. It reads pages from the local AEM proxy, replaces
-the chat endpoint in the served JavaScript response, and blocks external API
+the chat endpoint and auth singleton only in served JavaScript responses, and
+blocks external API
 connections using a preview-only Content Security Policy. It never rewrites the
 application files or forwards write requests to the upstream site. Port 3000
 continues to use the real chat integration.

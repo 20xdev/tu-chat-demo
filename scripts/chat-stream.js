@@ -4,31 +4,6 @@ const STOP_STATES = new Set([
   'completed', 'failed', 'canceled', 'rejected', 'input-required', 'auth-required',
 ]);
 
-export function createChatRequest(text, contextId, token) {
-  return {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      Accept: 'text/event-stream',
-      'X-Chat-Access-Token': token,
-    },
-    body: JSON.stringify({
-      jsonrpc: '2.0',
-      id: crypto.randomUUID(),
-      method: 'message/stream',
-      params: {
-        message: {
-          kind: 'message',
-          messageId: crypto.randomUUID(),
-          contextId,
-          role: 'user',
-          parts: [{ kind: 'text', text }],
-        },
-      },
-    }),
-  };
-}
-
 export function createTurnState(contextId) {
   return {
     contextId,
@@ -122,24 +97,36 @@ export function turnFinished(state) {
   return state.closed && ['completed', 'input-required', 'auth-required'].includes(state.outcome);
 }
 
-export async function readA2AStream(body, onEvent) {
+export async function readEventStream(body, onEvent, onDone = () => false) {
   const reader = body.getReader();
   const decoder = new TextDecoder();
   let buffer = '';
   let lines = [];
   let ended = false;
   let stopped = false;
+  let eventSize = 0;
   function dispatch() {
     if (!lines.length) return false;
     const data = lines.join('\n');
     lines = [];
-    // Tolerate older fixtures, but never treat this non-A2A marker as task completion.
-    if (data === '[DONE]') return false;
-    return onEvent(JSON.parse(data)) === true;
+    eventSize = 0;
+    // Only callers that recognise this sentinel may stop the stream.
+    if (data === '[DONE]') return onDone() === true;
+    let event;
+    try {
+      event = JSON.parse(data);
+    } catch {
+      throw new Error('The chat stream contained invalid JSON.');
+    }
+    return onEvent(event) === true;
   }
   function line(value) {
     if (!value) return dispatch();
-    if (value.startsWith('data:')) lines.push(value.slice(5).replace(/^ /, ''));
+    if (value.startsWith('data:')) {
+      eventSize += value.length;
+      if (eventSize > 16 * 1024 * 1024) throw new Error('The chat event exceeds the size limit.');
+      lines.push(value.slice(5).replace(/^ /, ''));
+    }
     return false;
   }
   try {
@@ -148,6 +135,7 @@ export async function readA2AStream(body, onEvent) {
       const chunk = await reader.read();
       ended = chunk.done;
       buffer += decoder.decode(chunk.value || new Uint8Array(), { stream: !ended });
+      if (buffer.length > 16 * 1024 * 1024) throw new Error('The chat event exceeds the size limit.');
       let match = buffer.match(/[\r\n]/);
       while (match && !stopped) {
         const { index } = match;
@@ -170,6 +158,8 @@ export async function readA2AStream(body, onEvent) {
     }
   }
 }
+
+export const readA2AStream = readEventStream;
 
 function validPosition(value) {
   return Array.isArray(value) && value.length === 2

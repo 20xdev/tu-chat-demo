@@ -29,6 +29,7 @@ const questions = {
   compare: 'Show me the fictional pass comparison.',
   notice: 'Walk me through a sample toll notice.',
   image: 'Show an image and a missing-image fallback.',
+  custom: 'Exercise a synthetic AG-UI custom event with no media mapping.',
   media: 'Show image attachments, base64 images, SVG and icons.',
   route: 'Show me the map from Flinders Street to the airport.',
   help: 'Show me how to install a Linkt tag on my windscreen. Include installation pictures or illustrated steps if available.',
@@ -70,6 +71,12 @@ const poll = setInterval(() => {
   if (!doc?.querySelector('.chat-field')) return;
   applyStyles();
   if (!ready) {
+    const auth = doc.querySelector('.chat-auth-button');
+    if (!auth || auth.disabled) return;
+    if (doc.querySelector('.chat-field').disabled) {
+      auth.click();
+      return;
+    }
     ready = true;
     run.disabled = false;
     status.textContent = 'Ready. All API responses are local fixtures. Experimental CSS is isolated to this preview.';

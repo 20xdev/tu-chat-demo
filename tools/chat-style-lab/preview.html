@@ -33,15 +33,9 @@
         <option value="compare">Pass comparison</option>
         <option value="notice">Notice checklist</option>
         <option value="image">Image + broken-image fallback</option>
-        <option value="media">Image files, base64, SVG + icons</option>
-        <option value="route">Structured route + follow-ups</option>
-        <option value="help">Help instructions + video reference</option>
-        <option value="help-not-found">Help media not found</option>
-        <option value="help-invalid">Invalid help-media references</option>
-        <option value="help-text-only">Help mentioned in text only</option>
-        <option value="route-invalid">Invalid route + text fallback</option>
+        <option value="custom">Synthetic unmapped CUSTOM event</option>
         <option value="interrupted">Interrupted response</option>
-        <option value="rpc-error">JSON-RPC error after partial text</option>
+        <option value="rpc-error">AG-UI agent error after partial text</option>
         <option value="slow">Slow streamed response</option>
         <option value="error">Failure + retry</option>
       </select>
@@ -49,6 +43,7 @@
     <button id="run" disabled>Run mock</button>
     <label><input id="enhanced" type="checkbox" checked> Experimental styles</label>
     <label><input id="mobile" type="checkbox"> Mobile width</label>
+    <a href="/__mock/renderer-tests.html">Renderer and migration checks</a>
   </header>
   <p id="status" role="status">Loading local site. No live chat requests are allowed.</p>
   <main><iframe src="/" title="Local-only chat style preview"></iframe></main>

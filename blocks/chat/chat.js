@@ -1,7 +1,8 @@
 import { createResponseRenderer } from '../../scripts/chat-response.js';
 import {
-  answerParts, applyTurnEvent, createChatRequest, createTurnState, readA2AStream, turnFinished,
-} from '../../scripts/chat-stream.js';
+  aguiAnswerParts, aguiNotice, createAGUIRequest, createAGUITurn, readAGUIStream,
+} from '../../scripts/chat-agui.js';
+import { chatAuth } from '../../scripts/chat-auth.js';
 import createToolViews from '../../scripts/chat-tools.js';
 
 const content = {
@@ -23,6 +24,8 @@ export default function decorate(block) {
   block.textContent = '';
 
   let conversationId = crypto.randomUUID();
+  let runtimeSessionId = crypto.randomUUID();
+  let authState = { status: 'loading' };
   const iconURL = 'https://cdn.jsdelivr.net/npm/lucide-static@0.468.0/icons/';
   const launcher = document.createElement('div');
   launcher.className = 'chat-launcher';
@@ -97,6 +100,18 @@ export default function decorate(block) {
   resetButton.append(resetIcon);
   header.append(avatar, identity, resetButton, closeButton);
 
+  const authBar = document.createElement('div');
+  authBar.className = 'chat-auth';
+  const authStatus = document.createElement('p');
+  authStatus.className = 'chat-auth-status';
+  authStatus.setAttribute('role', 'status');
+  const authButton = document.createElement('button');
+  authButton.type = 'button';
+  authButton.className = 'chat-auth-button';
+  authButton.textContent = 'Sign in';
+  authButton.disabled = true;
+  authBar.append(authStatus, authButton);
+
   const welcome = document.createElement('div');
   welcome.className = 'chat-welcome';
   const heading = document.createElement('h2');
@@ -120,6 +135,7 @@ export default function decorate(block) {
   field.rows = 1;
   field.placeholder = content.placeholder;
   field.setAttribute('aria-label', content.placeholder);
+  field.disabled = true;
 
   const sendButton = document.createElement('button');
   sendButton.type = 'submit';
@@ -136,7 +152,7 @@ export default function decorate(block) {
   notice.className = 'chat-notice';
   notice.textContent = content.notice;
   form.append(field, sendButton);
-  panel.append(header, welcome, messages, form, notice);
+  panel.append(header, authBar, welcome, messages, form, notice);
   block.append(launcher, panel);
   let previousOverflow;
   function updateViewport() {
@@ -201,15 +217,17 @@ export default function decorate(block) {
   function disposeTurn(turn) {
     turn.disposed = true;
     turn.controller.abort();
+    turn.state.customEvents.length = 0;
     turn.tools.dispose();
     turns.delete(turn.message);
   }
 
-  resetButton.addEventListener('click', () => {
-    if (pending) return;
+  function resetConversation() {
     turns.forEach(disposeTurn);
     activeTurn = undefined;
     conversationId = crypto.randomUUID();
+    runtimeSessionId = crypto.randomUUID();
+    pending = false;
     messages.replaceChildren();
     messages.hidden = true;
     welcome.hidden = false;
@@ -217,7 +235,11 @@ export default function decorate(block) {
     field.style.height = 'auto';
     sendButton.disabled = true;
     resetButton.disabled = true;
+    messages.setAttribute('aria-busy', 'false');
     field.focus();
+  }
+  resetButton.addEventListener('click', () => {
+    if (!pending) resetConversation();
   });
 
   function addMessage(text, type) {
@@ -264,31 +286,36 @@ export default function decorate(block) {
     });
   }
 
+  function updateNotice(turn) {
+    turn.notice.textContent = aguiNotice(turn.state);
+    turn.notice.hidden = !turn.notice.textContent;
+    turn.hasResponse = !turn.answer.hidden || !turn.toolContainer.hidden || !turn.notice.hidden;
+  }
+
   function updateTurn(turn) {
     if (turn.disposed || turn.contextId !== conversationId || !turn.message.isConnected) return;
     if (turn.renderedVersion !== turn.state.answerVersion) {
-      turn.answer.replaceChildren(renderResponse(answerParts(turn.state)));
+      turn.answer.replaceChildren(renderResponse(aguiAnswerParts(turn.state)));
       turn.answer.hidden = !turn.answer.hasChildNodes();
       decorateResponse(turn.answer);
       turn.renderedVersion = turn.state.answerVersion;
     }
     turn.tools.update(turn.state.tools);
-    const notices = {
-      'input-required': 'More information is needed. You can reply in this conversation.',
-      'auth-required': 'Authentication is required before this request can continue.',
-    };
-    turn.notice.textContent = notices[turn.state.outcome] || '';
-    turn.notice.hidden = !turn.notice.textContent;
-    turn.hasResponse = !turn.answer.hidden || !turn.toolContainer.hidden || !turn.notice.hidden;
+    updateNotice(turn);
     if (turn.hasResponse) {
       turn.indicator.remove();
       turn.loadingStatus.remove();
       turn.message.classList.remove('chat-message-loading');
+    } else if (!turn.state.closed) {
+      turn.message.prepend(turn.indicator, turn.loadingStatus);
+      turn.message.classList.add('chat-message-loading');
     }
     messages.scrollTop = messages.scrollHeight;
   }
 
   async function reply(userInput, turn) {
+    const config = await chatAuth.initialize();
+    let accessToken = await chatAuth.getAccessToken();
     if (!markdownLibraries) {
       const markdownURL = 'https://cdn.jsdelivr.net/npm/marked@18.1.0/lib/marked.esm.js';
       const sanitizerURL = 'https://cdn.jsdelivr.net/npm/dompurify@3.4.16/dist/purify.es.mjs';
@@ -301,33 +328,54 @@ export default function decorate(block) {
     const [{ marked }, { default: DOMPurify }] = await markdownLibraries;
     if (turn.disposed || turn.contextId !== conversationId) return;
     renderResponse = createResponseRenderer(marked, DOMPurify);
-    const tokenCookie = document.cookie.split(';')
-      .map((cookie) => cookie.trim())
-      .find((cookie) => cookie.startsWith('CHAT_ACCESS_TOKEN='));
-    const chatAccessToken = tokenCookie
-      ? decodeURIComponent(tokenCookie.slice('CHAT_ACCESS_TOKEN='.length)) : null;
-    const request = createChatRequest(userInput, turn.contextId, chatAccessToken);
-    request.signal = turn.controller.signal;
-    const res = await fetch('https://adobeioruntime.net/api/v1/web/391665-624violetduck/tu-appbuilder-chat-server/a2a.http', request);
-    if (!res.ok || !res.body) throw new Error('Chat request failed');
+    const { contextId, sessionId, state } = turn;
+    const request = createAGUIRequest(userInput, contextId, sessionId, accessToken, state.runId);
+    const requestForTurn = () => ({
+      ...request,
+      headers: { ...request.headers, Authorization: `Bearer ${accessToken}` },
+      signal: turn.controller.signal,
+    });
+    let res = await fetch(config.agentEndpoint, requestForTurn());
+    if (res.status === 401) {
+      await res.body?.cancel();
+      accessToken = await chatAuth.getAccessToken({ forceRefresh: true });
+      if (turn.disposed || turn.contextId !== conversationId) return;
+      res = await fetch(config.agentEndpoint, requestForTurn());
+    }
+    if (res.status === 401) {
+      await res.body?.cancel();
+      chatAuth.requireSignIn();
+      throw new Error('Chat authorization was rejected. Please sign in again.');
+    }
+    if (!res.ok) {
+      await res.body?.cancel();
+      throw new Error(res.status === 403
+        ? 'Your signed-in account does not have access to this agent.'
+        : `Chat request failed (HTTP ${res.status}).`);
+    }
+    if (!res.body) throw new Error('The chat service returned no response stream.');
     if (!res.headers.get('content-type')?.includes('text/event-stream')) {
+      await res.body.cancel();
       throw new Error('Expected a chat event stream');
     }
-    await readA2AStream(res.body, (envelope) => {
-      if (turn.disposed || turn.contextId !== conversationId) return true;
-      applyTurnEvent(turn.state, envelope);
+    await readAGUIStream(res.body, turn.state, () => {
+      if (turn.disposed || turn.contextId !== conversationId) return;
       updateTurn(turn);
-      return turn.state.closed;
     });
     if (turn.disposed) return;
-    if (!turnFinished(turn.state)) throw new Error('Chat response interrupted');
+    updateTurn(turn);
     if (!turn.hasResponse) throw new Error('Empty response');
   }
 
   function setBusy(value) {
     pending = value;
-    sendButton.disabled = value || !field.value.trim();
-    resetButton.disabled = value;
+    const authenticated = authState.status === 'authenticated';
+    sendButton.disabled = value || !authenticated || !field.value.trim();
+    field.disabled = !authenticated;
+    suggestions.querySelectorAll('button').forEach((button) => {
+      button.disabled = value || !authenticated;
+    });
+    resetButton.disabled = value || !authenticated || !turns.size;
     messages.querySelectorAll('.chat-retry').forEach((button) => { button.disabled = value; });
     turns.forEach((turn) => turn.tools.setBusy(value));
     messages.setAttribute('aria-busy', String(value));
@@ -339,8 +387,9 @@ export default function decorate(block) {
     const turn = {
       message,
       contextId: conversationId,
+      sessionId: runtimeSessionId,
       controller: new AbortController(),
-      state: createTurnState(conversationId),
+      state: createAGUITurn(conversationId),
       renderedVersion: -1,
       hasResponse: false,
       disposed: false,
@@ -379,8 +428,12 @@ export default function decorate(block) {
     message.classList.add('chat-message-loading');
     try {
       await reply(text, turn);
-    } catch {
+    } catch (failure) {
       if (turn.disposed || turn.contextId !== conversationId) return;
+      turn.state.progress.clear();
+      updateNotice(turn);
+      turn.indicator.remove();
+      turn.loadingStatus.remove();
       message.classList.remove('chat-message-loading');
       message.classList.add('chat-message-error');
       if (!turn.hasResponse) message.replaceChildren();
@@ -396,8 +449,8 @@ export default function decorate(block) {
       errorTitle.textContent = turn.hasResponse ? 'Response interrupted' : "We couldn't get a response";
       const errorDescription = document.createElement('p');
       errorDescription.className = 'chat-error-description';
-      errorDescription.textContent = turn.hasResponse
-        ? 'Try again for a complete answer.' : 'Please try again in a moment.';
+      errorDescription.textContent = failure instanceof Error
+        ? failure.message : 'Chat failed. Please try again.';
       const retry = document.createElement('button');
       retry.type = 'button';
       retry.className = 'chat-retry';
@@ -421,7 +474,7 @@ export default function decorate(block) {
 
   function send() {
     const text = field.value.trim();
-    if (!text || pending) return;
+    if (!text || pending || authState.status !== 'authenticated') return;
     welcome.hidden = true;
     messages.hidden = false;
     addMessage(text, 'sent');
@@ -468,12 +521,41 @@ export default function decorate(block) {
   field.addEventListener('input', () => {
     field.style.height = 'auto';
     field.style.height = `${field.scrollHeight}px`;
-    sendButton.disabled = pending || !field.value.trim();
+    sendButton.disabled = pending || authState.status !== 'authenticated' || !field.value.trim();
   });
+
+  function showAuthError(error) {
+    authStatus.textContent = error instanceof Error ? error.message : 'Chat sign-in failed.';
+    authStatus.setAttribute('role', 'alert');
+    authButton.disabled = false;
+  }
+  authButton.addEventListener('click', async () => {
+    authButton.disabled = true;
+    try {
+      if (authState.status === 'authenticated') chatAuth.logout();
+      else if (authState.status === 'error') await chatAuth.initialize();
+      else await chatAuth.login();
+    } catch (error) {
+      showAuthError(error);
+    }
+  });
+  const unsubscribeAuth = chatAuth.subscribe((state) => {
+    const previous = authState.status;
+    authState = state;
+    if (previous === 'authenticated' && state.status !== 'authenticated') resetConversation();
+    authStatus.textContent = state.message;
+    authStatus.setAttribute('role', state.status === 'error' ? 'alert' : 'status');
+    const labels = { authenticated: 'Sign out', error: 'Retry setup' };
+    authButton.textContent = labels[state.status] || 'Sign in';
+    authButton.disabled = ['loading', 'signing-in'].includes(state.status);
+    setBusy(pending);
+  });
+  chatAuth.initialize().catch(showAuthError);
 
   window.addEventListener('pagehide', (event) => {
     if (event.persisted) return;
     turns.forEach(disposeTurn);
+    unsubscribeAuth();
     window.removeEventListener('resize', updateViewport);
     window.visualViewport?.removeEventListener('resize', updateViewport);
     window.visualViewport?.removeEventListener('scroll', updateViewport);
