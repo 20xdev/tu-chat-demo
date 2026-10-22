@@ -278,12 +278,24 @@ remains in-memory only; this feature does not add persistence or simultaneous se
 ### Illustrated help and video references
 
 In the retained A2A adapter, `helpMedia` is collected from status, artifact, task
-and message parts; no AG-UI CUSTOM mapping is assumed.
+and message parts. Production AG-UI `CUSTOM helpMedia` events reuse this renderer.
 Cards are retained alongside the final text answer and upserted per tool-call ID
-within their assistant turn. Only the boolean `found: true` enables media.
+within their assistant turn. Instruction results require boolean `found: true` to enable media.
 Valid instructions remain readable for unsuccessful or malformed results.
 Titles, ordered steps, alt text, and captions are plain text. Illustrations are
 not assigned to steps: media ordering is preserved as supplied.
+
+The observed `status: "question"` variant instead renders its `question` and
+validated `options` as accessible answer buttons through the normal chat send
+flow, retaining conversation/session context and busy/reset/disposal behavior.
+It does not require `found`, `steps` or images; `media: []` is a valid text-only
+question and produces no unavailable-media or missing-instructions warning.
+Optional `account_check` shows its summary, tag ending, account status, last
+known plate, last detection and supplied plate-matched trip count (including
+zero). Strings remain plain text, dates are not reinterpreted, and numeric
+strings are not coerced to counts. Malformed question/options/account data
+still produces explicit warnings while usable content remains visible.
+`step` is backend workflow metadata, not a replacement question or instruction.
 
 Six installation illustrations are stored in [`help/tags/`](help/tags/), matching
 the root-relative `/help/tags/` paths supplied by the agent. With the project

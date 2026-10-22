@@ -504,18 +504,44 @@ function tripListView(value, host) {
   }
 }
 
-function helpView(value, host, assetBase) {
+function helpView(value, host, assetBase, addOptions) {
   const help = parseHelpMedia(value);
   const cleanups = [];
   host.classList.add('chat-help');
   host.append(element('h3', '', help.title));
   help.warnings.forEach((warning) => host.append(element('p', 'chat-tool-fallback', warning)));
+  if (help.isQuestion) {
+    host.classList.add('chat-help-question');
+    if (help.accountFields.length || help.accountSummary) {
+      const account = element('div', 'chat-help-account');
+      account.append(element('h4', '', 'Account check'));
+      if (help.accountSummary) account.append(element('p', 'chat-help-summary', help.accountSummary));
+      if (help.accountFields.length) {
+        const fields = element('dl', 'chat-help-account-fields');
+        help.accountFields.forEach(([label, text]) => {
+          const field = element('div', 'chat-help-account-field');
+          field.append(element('dt', '', label), element('dd', '', text));
+          fields.append(field);
+        });
+        account.append(fields);
+      }
+      host.append(account);
+    }
+    if (help.question) host.append(element('p', 'chat-help-question-text', help.question));
+    if (help.options.length) {
+      const choices = element('div', 'chat-help-options');
+      choices.setAttribute('role', 'group');
+      choices.setAttribute('aria-label', help.question || 'Answer options');
+      cleanups.push(addOptions(choices, help.options));
+      host.append(choices);
+    }
+  }
   if (help.steps.length) {
     const steps = element('ol', 'chat-help-steps');
     help.steps.forEach((step) => steps.append(element('li', '', step)));
     host.append(steps);
   }
-  if (help.found && help.media.length) {
+  if ((help.found || help.isQuestion) && help.media.length) {
     const media = element('div', 'chat-help-media');
     help.media.forEach((entry) => {
       const figure = element('figure', 'chat-help-figure');
@@ -576,6 +602,19 @@ export default function createToolViews(
   const views = new Map();
   let busy = false;
   let disposed = false;
+  function addOptions(host, options) {
+    let active = true;
+    options.forEach((option) => {
+      const button = element('button', 'chat-followup', option);
+      button.type = 'button';
+      button.disabled = busy;
+      button.addEventListener('click', () => {
+        if (active && !disposed && !busy && !button.disabled) onFollowUp(option);
+      });
+      host.append(button);
+    });
+    return () => { active = false; };
+  }
   return {
     update(tools) {
       if (disposed) return;
@@ -588,7 +627,7 @@ export default function createToolViews(
         if (tool.kind === 'routePlan') dispose = routeView(tool.value, host);
         if (tool.kind === 'statementCard') statementView(tool.value, host);
         if (tool.kind === 'tripList') tripListView(tool.value, host);
-        if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase);
+        if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase, addOptions);
         if (tool.kind === 'followUps') {
           host.classList.add('chat-followups');
           host.setAttribute('aria-label', 'Suggested follow-up questions');
@@ -597,15 +636,7 @@ export default function createToolViews(
             host.append(element('p', 'chat-tool-fallback', 'No valid follow-up questions were supplied.'));
           } else {
             host.append(element('h3', '', 'You could also ask'));
-            options.forEach((option) => {
-              const button = element('button', 'chat-followup', option);
-              button.type = 'button';
-              button.disabled = busy;
-              button.addEventListener('click', () => {
-                if (!disposed && !button.disabled) onFollowUp(option);
-              });
-              host.append(button);
-            });
+            dispose = addOptions(host, options);
           }
         }
         if (previous) previous.host.replaceWith(host);

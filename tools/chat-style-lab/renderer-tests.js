@@ -144,6 +144,21 @@ const bundledHelp = {
     sampleHelp.media[2],
   ],
 };
+const sampleQuestion = {
+  status: 'question',
+  step: 'beeping',
+  question: 'Does your demo tag beep at a toll point?',
+  options: ['Yes', 'No'],
+  media: [],
+  account_check: {
+    tag_number_ending: '9999',
+    status: 'Active',
+    last_known_plate: 'DEMO-01',
+    last_detected: '1 October 2026',
+    trips_matched_by_plate_since: 7,
+    summary: 'Fictional demo tag: recent trips were matched by plate.',
+  },
+};
 function helpViews(value, base = '') {
   const host = document.createElement('div');
   const view = createToolViews(host, () => {}, base);
@@ -824,6 +839,90 @@ const cases = [
     assert(help.steps.join() === sampleHelp.steps.join(), 'Help steps were reordered');
     assert(help.media[0].caption === 'Mini tag' && help.media[2].type === 'video', 'Media was reordered');
   }],
+  ['Help questions allow empty media and retain all supplied account fields', () => {
+    const parsed = parseHelpMedia(sampleQuestion);
+    assert(parsed.isQuestion && !parsed.warnings.length, 'Valid text-only question produced warnings');
+    const { host, view } = helpViews(sampleQuestion);
+    assert(
+      host.querySelector('.chat-help-question-text').textContent === sampleQuestion.question
+      && host.querySelectorAll('button').length === 2
+      && !host.querySelector('.chat-tool-fallback,img,ol'),
+      'Question was lost or empty media/instructions were treated as an error',
+    );
+    assert(
+      host.querySelector('.chat-help-summary').textContent === sampleQuestion.account_check.summary
+      && [...host.querySelectorAll('dd')].map((field) => field.textContent).join('|')
+        === '9999|Active|DEMO-01|1 October 2026|7',
+      'Account-check details were lost or changed',
+    );
+    view.dispose();
+    [undefined, []].forEach((media) => {
+      assert(
+        !parseHelpMedia({
+          status: 'question', question: 'Demo?', options: ['Yes'], ...(media ? { media } : {}),
+        }).warnings.length,
+        'Question required optional media, instructions or account details',
+      );
+    });
+  }],
+  ['Question answer buttons upsert, respect busy state and stop after replacement/disposal', () => {
+    const host = document.createElement('div');
+    const sent = [];
+    const view = createToolViews(host, (answer) => sent.push(answer));
+    const tools = new Map([['help:q', { kind: 'helpMedia', value: sampleQuestion }]]);
+    view.update(tools);
+    const yes = host.querySelector('button');
+    view.update(tools);
+    assert(host.querySelector('button') === yes, 'Question buttons duplicated');
+    view.setBusy(true);
+    yes.dispatchEvent(new Event('click'));
+    assert(yes.disabled && !sent.length, 'Busy question submitted');
+    view.setBusy(false);
+    yes.click();
+    assert(sent.join() === 'Yes' && yes.type === 'button', 'Answer text or button type changed');
+    view.update(new Map([['help:q', {
+      kind: 'helpMedia', value: { ...sampleQuestion, question: 'Next demo question?' },
+    }]]));
+    yes.dispatchEvent(new Event('click'));
+    assert(sent.length === 1, 'Replaced question remained interactive');
+    const next = host.querySelectorAll('button')[1];
+    view.dispose();
+    next.dispatchEvent(new Event('click'));
+    assert(sent.length === 1, 'Disposed question submitted');
+  }],
+  ['Malformed help questions warn without hiding usable data or coercing counts', () => {
+    const invalid = {
+      ...sampleQuestion,
+      question: null,
+      options: ['Yes', null],
+      account_check: { ...sampleQuestion.account_check, trips_matched_by_plate_since: '7' },
+    };
+    const { host, view } = helpViews(invalid);
+    assert(
+      host.querySelectorAll('.chat-tool-fallback').length === 3
+      && host.querySelector('button').textContent === 'Yes'
+      && host.querySelectorAll('dd').length === 4,
+      'Malformed question fields were silently accepted or usable details lost',
+    );
+    view.dispose();
+    assert(
+      parseHelpMedia({ ...sampleQuestion, options: [], account_check: null }).warnings.length === 2,
+      'Empty answers or invalid account data did not warn',
+    );
+    const zero = parseHelpMedia({
+      ...sampleQuestion, account_check: { trips_matched_by_plate_since: 0 },
+    });
+    assert(zero.accountFields[0][1] === '0' && !zero.warnings.length, 'Zero count was lost');
+    const unsafe = '<img src=x onerror=alert(1)>';
+    const safe = helpViews({
+      ...sampleQuestion, question: unsafe, options: [unsafe], account_check: { summary: unsafe },
+    });
+    assert(
+      !safe.host.querySelector('img') && safe.host.querySelector('button').textContent === unsafe,
+      'Question fields were interpreted as markup',
+    );
+    safe.view.dispose();
+  }],
   ['Only boolean found:true enables help media; valid instructions remain', () => {
     [false, 'false', 'true', undefined, null, 1].forEach((found) => {
       const { host, view } = helpViews({ ...sampleHelp, found }, helpBase);
@@ -1266,6 +1365,19 @@ const cases = [
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
+        if (mode === 'help-question') {
+          const questionEvent = {
+            type: 'CUSTOM', name: 'helpMedia', value: { ...sampleQuestion, toolCallId: 'aws-question' },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-question', toolCallName: 'tag_health_check' },
+            questionEvent,
+            questionEvent,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-question' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Let us check your fictional tag.' },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -1453,6 +1565,41 @@ const cases = [
       );
       doc.querySelector('.chat-reset').click();
       assert(!help.isConnected && helpImages.every((image) => !image.hasAttribute('src')), 'Reset retained help assets');
+      mode = 'help-question';
+      await submit('Check my demo tag');
+      const question = doc.querySelector('.chat-help-question');
+      assert(
+        question && doc.querySelectorAll('.chat-help-question').length === 1
+        && question.querySelectorAll('button').length === 2
+        && question.querySelectorAll('dd').length === 5
+        && !doc.querySelector('.chat-tool-fallback,.chat-turn-status:not([hidden])'),
+        'Text-only help question showed false warnings, lost fields or duplicated',
+      );
+      const questionWidth = frame.style.width;
+      [320, 375, 390].forEach((width) => {
+        frame.style.width = `${width}px`;
+        win.dispatchEvent(new win.Event('resize'));
+        assert(
+          question.scrollWidth <= question.clientWidth
+          && question.getBoundingClientRect().right <= win.innerWidth,
+          `Help question overflowed at ${width}px`,
+        );
+      });
+      frame.style.width = questionWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const questionRequest = requests.at(-1);
+      mode = 'complete';
+      question.querySelectorAll('button')[1].click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'help-question answer');
+      assert(
+        requests.at(-1).request.messages[0].content === 'No'
+        && requests.at(-1).request.threadId === questionRequest.request.threadId
+        && requests.at(-1).session === questionRequest.session && question.isConnected,
+        'Question answer lost its text, conversation context or account check',
+      );
+      doc.querySelector('.chat-reset').click();
+      assert(!question.isConnected, 'Reset retained an obsolete question');
       mode = 'trip-list';
       doc.querySelector('.chat-reset').click();
       await submit('Show my last ten trips');

@@ -1091,6 +1091,47 @@
   background: #fff9e8;
 }
 
+.chat .chat-help-account {
+  margin: 12px 0 20px;
+  padding: 16px;
+  border: 1px solid var(--chat-border);
+  border-radius: 12px;
+  background: #f4f7f5;
+  overflow-wrap: anywhere;
+}
+
+.chat .chat-help-account-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 180px), 1fr));
+  gap: 12px 20px;
+  margin: 16px 0 0;
+}
+
+.chat .chat-help-account-field {
+  min-width: 0;
+}
+
+.chat .chat-help-account-field dt {
+  color: var(--chat-muted);
+  font-size: 12px;
+}
+
+.chat .chat-help-account-field dd {
+  margin: 4px 0 0;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.chat .chat-help-question-text {
+  font-weight: 700;
+}
+
+.chat .chat-help-options {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 .chat .chat-help-media {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));

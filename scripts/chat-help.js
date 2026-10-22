@@ -1,17 +1,70 @@
+import { followUpOptions } from './chat-stream.js';
+
 export function parseHelpMedia(value) {
+  const isQuestion = value?.status === 'question';
   const steps = Array.isArray(value?.steps) ? value.steps : [];
   const validSteps = steps.filter((step) => typeof step === 'string' && step.trim());
   const warnings = [];
-  if (value?.found !== true) warnings.push('Help media is unavailable for this request.');
-  if (!validSteps.length) warnings.push('No valid written instructions were supplied.');
+  if (!isQuestion && value?.found !== true) warnings.push('Help media is unavailable for this request.');
+  if (!isQuestion && !validSteps.length) warnings.push('No valid written instructions were supplied.');
   else if (validSteps.length !== steps.length) warnings.push('Some invalid help steps were omitted.');
-  if (value?.found === true && !Array.isArray(value.media)) {
+  if (isQuestion && Object.hasOwn(value, 'steps') && !Array.isArray(value.steps)) {
+    warnings.push('The supplied help instructions are invalid.');
+  }
+  if ((isQuestion ? Object.hasOwn(value, 'media') : value?.found === true)
+    && !Array.isArray(value.media)) {
     warnings.push('No media references were supplied.');
   }
+  const question = typeof value?.question === 'string' ? value.question.trim() : '';
+  const options = isQuestion ? followUpOptions(value) : [];
+  const accountFields = [];
+  let accountSummary = '';
+  if (isQuestion) {
+    if (!question) warnings.push('No valid help question was supplied.');
+    if (!options.length) warnings.push('No valid answer options were supplied.');
+    else if (value.options.some((option) => typeof option !== 'string' || !option.trim())) {
+      warnings.push('Some invalid answer options were omitted.');
+    }
+    const account = value.account_check;
+    if (Object.hasOwn(value, 'account_check')) {
+      if (!account || typeof account !== 'object' || Array.isArray(account)) {
+        warnings.push('The supplied account check is invalid.');
+      } else {
+        let invalid = false;
+        [
+          ['tag_number_ending', 'Tag ending'],
+          ['status', 'Account status'],
+          ['last_known_plate', 'Last known plate'],
+          ['last_detected', 'Last detected'],
+          ['trips_matched_by_plate_since', 'Trips matched by plate since'],
+        ].forEach(([key, label]) => {
+          if (!Object.hasOwn(account, key)) return;
+          const field = account[key];
+          const valid = key === 'trips_matched_by_plate_since'
+            ? Number.isSafeInteger(field) && field >= 0
+            : typeof field === 'string' && field.trim();
+          if (valid) accountFields.push([label, String(field)]);
+          else invalid = true;
+        });
+        if (Object.hasOwn(account, 'summary')) {
+          if (typeof account.summary === 'string' && account.summary.trim()) {
+            accountSummary = account.summary;
+          } else invalid = true;
+        }
+        if (invalid) warnings.push('Some account-check details are incomplete or invalid.');
+      }
+    }
+  }
+  const defaultTitle = isQuestion ? 'Tag health check' : 'Help instructions';
   return {
+    isQuestion,
+    question,
+    options,
+    accountFields,
+    accountSummary,
     found: value?.found === true,
     title: typeof value?.title === 'string' && value.title.trim()
-      ? value.title : 'Help instructions',
+      ? value.title : defaultTitle,
     steps: validSteps,
     media: Array.isArray(value?.media) ? value.media : [],
     warnings,
