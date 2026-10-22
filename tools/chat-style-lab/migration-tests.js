@@ -267,16 +267,32 @@ const cases = [
       assert(!harness.storage.getItem(TRANSACTION_KEY), 'Failed token exchange retained transaction');
     }));
   }],
-  ['Blocked session storage produces an explicit sign-in error', async () => {
+  ['Blocked session storage publishes a shared, retryable sign-in error', async () => {
     const harness = authHarness();
+    let blocked = true;
     const auth = createChatAuth({
       ...harness.options,
       storage: {
         ...harness.storage,
-        setItem() { throw new Error('synthetic storage denial'); },
+        setItem(key, value) {
+          if (blocked) throw new Error('synthetic storage denial');
+          harness.storage.setItem(key, value);
+        },
       },
     });
+    let snapshot;
+    auth.subscribe((state) => { snapshot = state; });
     await rejects(() => auth.login(), 'session storage');
+    assert(
+      snapshot.status === 'error' && snapshot.message.includes('session storage'),
+      'Sign-in failure was not shared with header and launcher subscribers',
+    );
+    blocked = false;
+    await auth.login();
+    assert(
+      snapshot.status === 'signing-in' && harness.navigation(),
+      'A failed sign-in prevented a fresh login attempt',
+    );
   }],
   ['Failed or unavailable refresh requires sign-in without reviving old tokens', async () => {
     await Promise.all([true, false].map(async (refresh) => {

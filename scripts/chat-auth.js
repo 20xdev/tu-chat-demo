@@ -184,7 +184,12 @@ export function createChatAuth({
     navigate(authorization.href);
   }
   function login() {
-    if (!authorizing) authorizing = beginLogin().finally(() => { authorizing = undefined; });
+    if (!authorizing) {
+      authorizing = beginLogin().catch((error) => {
+        publish('error', error instanceof Error ? error.message : 'Chat sign-in failed.');
+        throw error;
+      }).finally(() => { authorizing = undefined; });
+    }
     return authorizing;
   }
   async function getAccessToken({ forceRefresh = false } = {}) {

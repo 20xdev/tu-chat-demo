@@ -71,7 +71,7 @@ const poll = setInterval(() => {
   if (!doc?.querySelector('.chat-field')) return;
   applyStyles();
   if (!ready) {
-    const auth = doc.querySelector('.chat-auth-button');
+    const auth = doc.querySelector('.chat-launcher-trigger');
     if (!auth || auth.disabled) return;
     if (doc.querySelector('.chat-field').disabled) {
       auth.click();

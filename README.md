@@ -54,6 +54,15 @@ requires sign-in. `CHAT_ACCESS_TOKEN` is no longer read or required, and
 `X-Chat-Access-Token` is never sent. No client secret or replacement shared secret
 is used.
 
+The header's **Log in** button and the bottom launcher's **Log in to chat**
+prompt use the same Cognito sign-in flow. After a successful callback, the header
+shows **Log out** and the launcher opens chat. The chat dialog contains no login
+or logout buttons; its authentication status area is hidden while signed in.
+Logging out or losing the session clears the conversation, aborts active requests
+and restores the launcher login prompt. The signed-out launcher keeps the
+**Log in to chat** label even when setup fails; errors remain visible separately
+and can be retried from the header or, after closing the dialog, the launcher.
+
 The published callback currently belongs to the `main` preview origin. Other
 branches, localhost and the live origin deliberately show an actionable
 configuration error if their origin differs. They cannot silently substitute a

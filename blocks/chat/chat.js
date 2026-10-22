@@ -105,12 +105,7 @@ export default function decorate(block) {
   const authStatus = document.createElement('p');
   authStatus.className = 'chat-auth-status';
   authStatus.setAttribute('role', 'status');
-  const authButton = document.createElement('button');
-  authButton.type = 'button';
-  authButton.className = 'chat-auth-button';
-  authButton.textContent = 'Sign in';
-  authButton.disabled = true;
-  authBar.append(authStatus, authButton);
+  authBar.append(authStatus);
 
   const welcome = document.createElement('div');
   welcome.className = 'chat-welcome';
@@ -176,11 +171,25 @@ export default function decorate(block) {
     messages.scrollTop = messages.scrollHeight;
     field.focus();
   }
-  launcher.addEventListener('click', openChat);
+  async function activateLauncher() {
+    if (['loading', 'signing-in'].includes(authState.status)) return;
+    if (authState.status === 'authenticated') {
+      openChat();
+      return;
+    }
+    try {
+      await chatAuth.login();
+    } catch (error) {
+      // eslint-disable-next-line no-use-before-define
+      showAuthError(error);
+      openChat();
+    }
+  }
+  launcher.addEventListener('click', activateLauncher);
   launcherField.addEventListener('keydown', (event) => {
     if (['Enter', ' ', 'ArrowUp'].includes(event.key)) {
       event.preventDefault();
-      openChat();
+      activateLauncher();
     }
   });
   async function closeChat() {
@@ -204,8 +213,13 @@ export default function decorate(block) {
     panel.classList.remove('chat-closing');
     document.body.style.overflow = previousOverflow;
     launcher.hidden = false;
-    launcherPrompt.textContent = field.value.trim() || content.placeholder;
-    [launcherField, expandButton].forEach((control) => control.setAttribute('aria-expanded', 'false'));
+    if (authState.status === 'authenticated') {
+      launcherPrompt.textContent = field.value.trim() || content.placeholder;
+    }
+    [launcherField, expandButton].forEach((control) => {
+      if (authState.status === 'authenticated') control.setAttribute('aria-expanded', 'false');
+      else control.removeAttribute('aria-expanded');
+    });
     launcherField.focus();
   });
   let pending = false;
@@ -525,29 +539,41 @@ export default function decorate(block) {
   });
 
   function showAuthError(error) {
+    authBar.hidden = false;
     authStatus.textContent = error instanceof Error ? error.message : 'Chat sign-in failed.';
     authStatus.setAttribute('role', 'alert');
-    authButton.disabled = false;
   }
-  authButton.addEventListener('click', async () => {
-    authButton.disabled = true;
-    try {
-      if (authState.status === 'authenticated') chatAuth.logout();
-      else if (authState.status === 'error') await chatAuth.initialize();
-      else await chatAuth.login();
-    } catch (error) {
-      showAuthError(error);
-    }
-  });
   const unsubscribeAuth = chatAuth.subscribe((state) => {
     const previous = authState.status;
     authState = state;
-    if (previous === 'authenticated' && state.status !== 'authenticated') resetConversation();
+    const authenticated = state.status === 'authenticated';
+    if (previous === 'authenticated' && !authenticated) {
+      resetConversation();
+      if (panel.open) panel.close();
+    }
+    authBar.hidden = authenticated;
     authStatus.textContent = state.message;
     authStatus.setAttribute('role', state.status === 'error' ? 'alert' : 'status');
-    const labels = { authenticated: 'Sign out', error: 'Retry setup' };
-    authButton.textContent = labels[state.status] || 'Sign in';
-    authButton.disabled = ['loading', 'signing-in'].includes(state.status);
+    const prompts = {
+      loading: 'Loading chat...',
+      'signing-in': 'Opening secure sign-in...',
+    };
+    launcherPrompt.textContent = authenticated
+      ? field.value.trim() || content.placeholder : prompts[state.status] || 'Log in to chat';
+    [launcherField, expandButton].forEach((control) => {
+      const labelText = authenticated ? 'Open Linkt Assistant' : 'Log in to use Linkt Assistant';
+      control.setAttribute('aria-label', labelText);
+      control.title = labelText;
+      control.disabled = ['loading', 'signing-in'].includes(state.status);
+      if (authenticated) {
+        control.setAttribute('aria-haspopup', 'dialog');
+        control.setAttribute('aria-controls', panel.id);
+        control.setAttribute('aria-expanded', String(panel.open));
+      } else {
+        ['aria-haspopup', 'aria-controls', 'aria-expanded']
+          .forEach((attribute) => control.removeAttribute(attribute));
+      }
+    });
     setBusy(pending);
   });
   chatAuth.initialize().catch(showAuthError);

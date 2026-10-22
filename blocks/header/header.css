@@ -271,6 +271,7 @@ header nav .nav-sections ul > li > ul > li {
 
 /* tools */
 header nav .nav-tools {
+  position: relative;
   grid-area: tools;
   font-weight: 400;
 }
@@ -298,7 +299,8 @@ header nav .nav-tools a:any-link {
 }
 
 /* "Log in" rendered as a filled green button */
-header nav .nav-tools .default-content-wrapper > p:last-child a:any-link {
+header nav .nav-tools .default-content-wrapper > p:last-child a:any-link,
+header nav .nav-tools .nav-auth-button {
   display: inline-block;
   padding: 12px 24px;
   border-radius: 8px;
@@ -308,8 +310,43 @@ header nav .nav-tools .default-content-wrapper > p:last-child a:any-link {
   line-height: 1;
 }
 
-header nav .nav-tools .default-content-wrapper > p:last-child a:hover {
+header nav .nav-tools .nav-auth-button {
+  margin: 0;
+  border: 0;
+  font-size: 16px;
+  white-space: nowrap;
+}
+
+header nav .nav-tools .default-content-wrapper > p:last-child a:hover,
+header nav .nav-tools .nav-auth-button:hover {
   background-color: var(--brand-hover-color);
+}
+
+header nav .nav-tools .nav-auth-button:disabled {
+  cursor: wait;
+  opacity: 0.6;
+}
+
+header nav .nav-tools .nav-auth-status {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 1;
+  box-sizing: border-box;
+  width: min(360px, calc(100vw - 32px));
+  margin: 8px 0 0;
+  padding: 12px;
+  border: 1px solid #dce5e0;
+  border-radius: 8px;
+  background: #fff;
+  box-shadow: 0 8px 24px rgb(25 55 35 / 12%);
+  font-size: 13px;
+  line-height: 1.5;
+  overflow-wrap: anywhere;
+}
+
+header nav .nav-tools .nav-auth-status[role="alert"] {
+  color: #9c2828;
 }
 
 @media (width < 900px) {
@@ -351,7 +388,8 @@ header nav .nav-tools .default-content-wrapper > p:last-child a:hover {
     gap: 8px;
   }
 
-  header nav .nav-tools .default-content-wrapper > p:last-child a:any-link {
+  header nav .nav-tools .default-content-wrapper > p:last-child a:any-link,
+  header nav .nav-tools .nav-auth-button {
     padding: 10px 12px;
     font-size: 14px;
   }
