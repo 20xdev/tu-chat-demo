@@ -9,6 +9,19 @@ if (!response.ok) throw new Error('Cannot load the synthetic migration fixture.'
 const sheet = await response.json();
 const origin = 'https://chat-style-lab.example.invalid';
 const config = parseChatConfig(sheet, origin);
+const routeFixture = {
+  toolCallId: 'aws-route',
+  ok: true,
+  origin: { label: 'Flinders Street', position: [144.96512, -37.8182] },
+  destination: { label: 'Melbourne Airport', position: [144.85017, -37.67137] },
+  distance_km: 22.7,
+  toll_total: 3.41,
+  currency: 'AUD',
+  segments: [
+    { tolled: false, points: [[144.96512, -37.8182], [144.93921, -37.78603]] },
+    { tolled: true, points: [[144.93921, -37.78603], [144.85017, -37.67137]] },
+  ],
+};
 const cloneSheet = () => JSON.parse(JSON.stringify(sheet));
 const assert = (value, message) => { if (!value) throw new Error(message); };
 async function rejects(action, fragment = '') {
@@ -375,7 +388,75 @@ const cases = [
     ]), state, () => {}), 'Explicit failure');
     assert(aguiAnswerParts(state)[0].text === 'Partial', 'Error discarded earlier text');
   }],
-  ['Synthetic CUSTOM retention is bounded, transient and never mapped to A2A media', () => {
+  ['Observed AWS routePlan and followUps render alongside text without unsupported notices', async () => {
+    const state = createAGUITurn('thread');
+    await readAGUIStream(stream([
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'preface', delta: "I'll price that drive for you." },
+      { type: 'TOOL_CALL_START', toolCallId: 'aws-route', toolCallName: 'plan_toll_route' },
+      { type: 'CUSTOM', name: 'routePlan', value: routeFixture },
+      { type: 'TOOL_CALL_END', toolCallId: 'aws-route' },
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'answer', delta: 'Final  answer.\n\n' },
+      { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'aws-followups', options: ['Check a different route', 'Plan another trip'] } },
+      { type: 'RUN_FINISHED', threadId: state.threadId, runId: state.runId },
+    ]), state, () => {});
+    assert(
+      state.tools.has('routePlan:aws-route') && state.tools.has('followUps:aws-followups'),
+      'Observed custom results did not reach the renderer tool map',
+    );
+    assert(
+      aguiAnswerParts(state)[0].text === "I'll price that drive for you.\n\nFinal  answer.\n\n",
+      'Custom events changed text spacing or message order',
+    );
+    assert(state.outcome === 'completed' && !aguiNotice(state), 'Supported content showed a warning');
+    assert(
+      state.customEvents.length === 0 && state.customBytes === 0,
+      'Known events incorrectly consumed unknown-event retention',
+    );
+  }],
+  ['AG-UI known custom results upsert by name and tool-call identity', () => {
+    const state = createAGUITurn('thread');
+    const event = { type: 'CUSTOM', name: 'routePlan', value: routeFixture };
+    applyAGUIEvent(state, event);
+    const first = state.tools.get('routePlan:aws-route');
+    applyAGUIEvent(state, JSON.parse(JSON.stringify(event)));
+    assert(state.tools.get('routePlan:aws-route') === first, 'Repeated result recreated its view');
+    applyAGUIEvent(state, { ...event, value: { ...routeFixture, toll_total: 4.2 } });
+    assert(state.tools.get('routePlan:aws-route') !== first, 'Changed result did not update');
+    applyAGUIEvent(state, { ...event, value: { ...routeFixture, toolCallId: 'another-route' } });
+    applyAGUIEvent(state, { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'aws-route', options: ['Ask again'] } });
+    assert(state.tools.size === 3, 'Independent calls or kinds overwrote each other');
+    assert(createAGUITurn('other').tools.size === 0, 'Tool state leaked into another turn');
+  }],
+  ['AG-UI tool-only clean EOF retains recognized interactive content', async () => {
+    const state = createAGUITurn('thread');
+    await readAGUIStream(stream([
+      { type: 'CUSTOM', name: 'routePlan', value: routeFixture },
+    ]), state, () => {});
+    assert(
+      state.outcome === 'completed' && state.tools.size === 1 && !aguiNotice(state),
+      'A valid tool-only reply was treated as an empty response',
+    );
+  }],
+  ['AG-UI recognized custom events require explicit tool-call identity', async () => {
+    await Promise.all(['routePlan', 'followUps'].flatMap((name) => [
+      null, {}, { toolCallId: '' }, { toolCallId: 42 },
+    ].map((value) => rejects(() => readAGUIStream(stream([{ type: 'CUSTOM', name, value }]), createAGUITurn('thread'), () => {}), 'tool call ID'))));
+  }],
+  ['AG-UI errors preserve mapped tools and text while clearing failed progress', async () => {
+    const state = createAGUITurn('thread');
+    await rejects(() => readAGUIStream(stream([
+      { type: 'TEXT_MESSAGE_CONTENT', messageId: 'answer', delta: 'Partial answer' },
+      { type: 'CUSTOM', name: 'routePlan', value: routeFixture },
+      { type: 'TOOL_CALL_START', toolCallId: 'pending', toolCallName: 'plan_toll_route' },
+      { type: 'RUN_ERROR', message: 'Synthetic route run failed' },
+    ]), state, () => {}), 'Synthetic route run failed');
+    assert(
+      state.tools.size === 1 && aguiAnswerParts(state)[0].text === 'Partial answer',
+      'Failure discarded usable route content',
+    );
+    assert(state.outcome === 'failed' && !aguiNotice(state), 'Failed tool progress stayed visible');
+  }],
+  ['Synthetic unknown CUSTOM retention is bounded, transient and never mapped to media', () => {
     const state = createAGUITurn('t');
     for (let index = 0; index < 100; index += 1) {
       applyAGUIEvent(state, { type: 'CUSTOM', name: 'synthetic-arbitrary', value: { html: '<img src=x>', index } });

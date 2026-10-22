@@ -32,6 +32,7 @@ const questions = {
   custom: 'Exercise a synthetic AG-UI custom event with no media mapping.',
   media: 'Show image attachments, base64 images, SVG and icons.',
   route: 'Show me the map from Flinders Street to the airport.',
+  'agui-route': 'Show a route and follow-up buttons from AWS AG-UI events.',
   help: 'Show me how to install a Linkt tag on my windscreen. Include installation pictures or illustrated steps if available.',
   'help-not-found': 'Show help instructions when media is unavailable.',
   'help-invalid': 'Show invalid help media without losing valid instructions.',

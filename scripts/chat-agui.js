@@ -1,4 +1,4 @@
-import { readEventStream } from './chat-stream.js';
+import { readEventStream, upsertTool } from './chat-stream.js';
 
 const CUSTOM_LIMIT = 20;
 const CUSTOM_BYTES = 64 * 1024;
@@ -77,6 +77,7 @@ export function applyAGUIEvent(state, event) {
     case 'RUN_ERROR':
       state.closed = true;
       state.outcome = 'failed';
+      state.progress.clear();
       throw new Error(typeof event.message === 'string' && event.message.trim()
         ? event.message.slice(0, 1000) : 'The agent reported an error.');
     case 'TEXT_MESSAGE_START':
@@ -103,6 +104,13 @@ export function applyAGUIEvent(state, event) {
     case 'CUSTOM': {
       if (!identifier(event.name) || !Object.hasOwn(event, 'value')) {
         throw new Error('The chat stream contained an invalid custom event.');
+      }
+      if (['routePlan', 'followUps'].includes(event.name)) {
+        if (!identifier(event.value?.toolCallId)) {
+          throw new Error('Interactive chat content is missing its tool call ID.');
+        }
+        upsertTool(state, event.name, event.value.toolCallId, event.value);
+        break;
       }
       state.unsupportedContent = true;
       if (state.customTruncated) break;
@@ -148,7 +156,8 @@ export async function readAGUIStream(body, state, onUpdate) {
     return true;
   });
   if (!state.closed) {
-    if (state.progress.size || (!state.messages.size && !state.unsupportedContent)) {
+    if (state.progress.size
+      || (!state.messages.size && !state.tools.size && !state.unsupportedContent)) {
       throw new Error('The chat response ended before an answer was available.');
     }
     state.closed = true;

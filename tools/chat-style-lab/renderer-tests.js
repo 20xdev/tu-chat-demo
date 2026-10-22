@@ -718,7 +718,7 @@ const cases = [
   ['Full chat flow preserves auth/context, blocks duplicates, and handles HTTP/SSE failures', async () => {
     const frame = document.createElement('iframe');
     frame.title = 'Isolated local chat regression';
-    frame.hidden = true;
+    frame.style.cssText = 'position:fixed;top:0;left:0;border:0;visibility:hidden;width:1280px;height:900px';
     frame.src = '/';
     document.body.append(frame);
     try {
@@ -786,12 +786,25 @@ const cases = [
           return Promise.resolve(response);
         }
         // Synthetic CUSTOM values do not establish an AWS media mapping.
-        const events = mode === 'structured' ? [
+        let events = mode === 'structured' ? [
           { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Final answer' },
           { type: 'CUSTOM', name: 'synthetic-unmapped', value: { sampleHelp } },
           { type: 'CUSTOM', name: 'synthetic-unmapped', value: { sampleRoute } },
           { type: 'RUN_FINISHED' },
         ] : [{ type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Partial answer' }];
+        if (mode === 'route') {
+          const routeEvent = {
+            type: 'CUSTOM', name: 'routePlan', value: { ...sampleRoute, toolCallId: 'aws-route' },
+          };
+          events = [
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Final route answer' },
+            routeEvent,
+            routeEvent,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-route' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'aws-followups', options: ['Check a different route', 'Plan another trip'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -918,6 +931,35 @@ const cases = [
         .getAttribute('aria-busy') === 'false', 'progress failure');
       assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Failed tool progress stayed visible');
       assert(!doc.querySelector('.chat-loading-status'), 'Failure retained a loading indicator');
+      mode = 'route';
+      doc.querySelector('.chat-reset').click();
+      await submit('Show the AWS route');
+      assert(doc.querySelectorAll('.chat-route').length === 1, 'AWS map was missing or duplicated');
+      assert(doc.querySelectorAll('.chat-followup').length === 2, 'AWS follow-ups were not rendered');
+      assert(!doc.querySelector('.chat-turn-status:not([hidden])'), 'Supported tools showed a warning');
+      await waitFor(
+        () => doc.querySelector('.chat-route-map path[stroke-dasharray]'),
+        'AWS Leaflet segment drawing',
+      );
+      const routeNode = doc.querySelector('.chat-route');
+      const routeRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelector('.chat-followup').click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'AWS follow-up request');
+      const followUpRequest = requests.at(-1);
+      assert(
+        followUpRequest.request.messages[0].content === 'Check a different route',
+        'Follow-up did not send its supplied text',
+      );
+      assert(followUpRequest.request.threadId === routeRequest.request.threadId
+        && followUpRequest.session === routeRequest.session, 'Follow-up changed the thread/session');
+      assert(routeNode.isConnected, 'A later answer removed the map');
+      doc.querySelector('.chat-reset').click();
+      assert(
+        !routeNode.isConnected && !doc.querySelector('.chat-followup'),
+        'Reset retained obsolete map or follow-ups',
+      );
       mode = 'held';
       doc.querySelector('.chat-reset').click();
       doc.querySelector('.chat-field').value = 'Cancel on logout';

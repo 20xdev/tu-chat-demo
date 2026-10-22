@@ -93,13 +93,15 @@ Gaps after tool completion retain the loading indicator until an answer arrives.
 Failures clear obsolete progress; rejected non-SSE response bodies are cancelled,
 and a missing response stream has an explicit error.
 
-**AG-UI rich-content mapping is deferred.** Existing A2A map/help/follow-up
-fixtures do not establish AG-UI CUSTOM names or schemas. Unknown CUSTOM events
-are held only in bounded per-turn memory (20 events and 64 KiB), never logged or
-dumped into HTML, and produce one unsupported-content notice per assistant turn.
-Truncation is disclosed. Reset/disposal drops retained events. The map, media and
-button components and A2A event adapter remain independently tested, but are not
-fed guessed AG-UI payloads.
+**Observed AG-UI route and follow-up content is supported.** `CUSTOM` events named
+`routePlan` and `followUps` feed the existing map and suggestion renderers, upserting
+by event name and `value.toolCallId`. Repeated identical results retain their views;
+tool completion and later text do not remove them. Supported events do not show
+the unsupported-content notice. Unknown CUSTOM names are held only in bounded
+per-turn memory (20 events and 64 KiB), never logged or dumped into HTML, and
+produce one unsupported-content notice per assistant turn. Truncation is disclosed.
+Reset/disposal drops retained events and interactive views. AG-UI help-media
+mapping remains unverified; the existing A2A help-media support is unchanged.
 
 External prerequisites remain Cognito public-client code/PKCE registration,
 the exact callback origin, supported refresh grants, a registered Hosted UI
@@ -150,14 +152,30 @@ allowed by the deployed `img-src` policy to display inline images.
 
 ### Retained A2A route and follow-up components
 
-This section describes the retained A2A contracts and reusable components, not
-a verified AG-UI rich-content integration. `scripts/chat-stream.js`
+This section describes the retained A2A contracts and the components also reused
+for observed AG-UI route and follow-up payloads. `scripts/chat-stream.js`
 adapts A2A task snapshots, status messages, artifacts, and direct messages into
 per-turn state. It retains structured tool results when final answer artifacts
 replace provisional text. Artifact `lastChunk` is tracked separately from task
 completion. A stream closing without a completion/action-required state retains
 partial content and shows the existing interruption/retry UI; `[DONE]` alone is
 not A2A completion. A direct A2A message is a complete message response.
+
+The production `scripts/chat-agui.js` adapter handles the observed raw AWS events
+separately from the legacy A2A adapter. These custom events feed the same renderers:
+
+```json
+{"type":"CUSTOM","name":"routePlan","value":{"toolCallId":"route-1","ok":true}}
+{"type":"CUSTOM","name":"followUps","value":{"toolCallId":"followups-1","options":["Check a different route","Plan another trip"]}}
+```
+
+The route example is abbreviated and requires the full geometry described below.
+Cards upsert by event name and `value.toolCallId`; identical repeated results keep
+their existing views. Tool completion and later text do not remove the map or
+suggestions. The unsupported-content notice appears only for unrecognized custom
+names, not `routePlan` or `followUps`. AG-UI help-media mapping remains unverified;
+the existing A2A help-media support is unchanged. The local lab's **AWS AG-UI route
++ follow-ups** scenario exercises the raw event format using fictional demo data.
 
 Recognised data parts use:
 
@@ -335,15 +353,16 @@ service. It requires Node.js 18 or newer and has no additional dependencies.
 
 The preview explicitly starts a **synthetic local session**, not a real Cognito
 login. It covers Markdown journey images, comparisons/checklists, image failures,
-slow streams, HTTP failure/retry, AG-UI errors and a synthetic arbitrary CUSTOM
-event. There are no verified AG-UI map/media examples. All values are fictional;
-do not enter personal or payment information.
+slow streams, HTTP failure/retry, AG-UI errors, a synthetic arbitrary CUSTOM
+event and a route/follow-up fixture using the observed AWS event shape.
+All demo values are fictional; do not enter personal or payment information.
 
 The original A2A fixture endpoint and rich-content fixtures remain available for
 independent adapter/component regression checks, not as a production fallback.
 Those checks cover map geometry, help illustrations, captions, media validation
-and follow-up callbacks. Synthetic CUSTOM fixtures are explicitly not observed
-AWS media responses. The referenced video is not fetched or verified.
+and follow-up callbacks. The AG-UI route fixture follows the supplied AWS contract
+but does not establish an AG-UI help-media schema. The referenced video is not
+fetched or verified.
 
 After restarting the style lab, open
 **http://localhost:3100/__mock/renderer-tests.html** for repeatable renderer checks.

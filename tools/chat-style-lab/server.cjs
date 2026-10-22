@@ -82,8 +82,11 @@ async function mockResponse(req, res, agui = false) {
     })),
     { result: { kind: 'status-update', status: { state: 'completed' }, final: true } },
   ];
-  if (agui) {
-    // Synthetic basic AG-UI fixtures, not evidence of a production CUSTOM mapping.
+  if (agui && scenario === 'agui-route') {
+    events = eventFixtures[scenario].map((event) => (event.type === 'RUN_FINISHED'
+      ? { ...event, threadId: data.threadId, runId: data.runId } : event));
+  } else if (agui) {
+    // Synthetic AG-UI fixtures never call the production agent.
     const chunks = parts.filter((part) => part.kind === 'text');
     events = [
       { type: 'RUN_STARTED', threadId: data.threadId, runId: data.runId },

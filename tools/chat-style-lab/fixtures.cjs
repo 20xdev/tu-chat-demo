@@ -169,6 +169,19 @@ const routeEvents = (value) => [
 ].map((result) => ({ result }));
 
 exports.eventFixtures = {
+  'agui-route': [
+    { type: 'TEXT_MESSAGE_START', messageId: 'demo-preface', role: 'assistant' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: 'demo-preface', delta: "I'll price that drive for you." },
+    { type: 'TEXT_MESSAGE_END', messageId: 'demo-preface' },
+    { type: 'TOOL_CALL_START', toolCallId: 'demo-route', toolCallName: 'plan_toll_route' },
+    { type: 'CUSTOM', name: 'routePlan', value: { ...exports.routePlan, toolCallId: 'demo-route' } },
+    { type: 'TOOL_CALL_END', toolCallId: 'demo-route' },
+    { type: 'TEXT_MESSAGE_START', messageId: 'demo-answer', role: 'assistant' },
+    { type: 'TEXT_MESSAGE_CONTENT', messageId: 'demo-answer', delta: `## Your sample journey\n\n${notice}\n\nThe map below is an illustrative fixture, not a live quote.` },
+    { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'demo-followups', options: ['Check a different route', 'Plan another trip'] } },
+    { type: 'TEXT_MESSAGE_END', messageId: 'demo-answer' },
+    { type: 'RUN_FINISHED', threadId: 'demo-aws-thread', runId: 'demo-aws-run' },
+  ],
   route: routeEvents(exports.routePlan),
   'route-invalid': routeEvents({
     ...exports.routePlan,

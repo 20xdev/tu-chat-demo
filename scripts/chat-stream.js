@@ -17,16 +17,20 @@ export function createTurnState(contextId) {
   };
 }
 
+export function upsertTool(state, kind, id, value) {
+  const key = `${kind}:${id}`;
+  const previous = state.tools.get(key);
+  if (!previous || JSON.stringify(previous.value) !== JSON.stringify(value)) {
+    state.tools.set(key, { kind, value });
+  }
+}
+
 function collectTools(state, parts) {
   parts.forEach((part) => {
     const tool = part?.kind === 'data' ? part.data?.toolData : null;
     if (!tool || !['routePlan', 'helpMedia', 'followUps'].includes(tool.kind)
       || typeof tool.toolUseId !== 'string' || !tool.toolUseId.trim()) return;
-    const key = `${tool.kind}:${tool.toolUseId}`;
-    const previous = state.tools.get(key);
-    if (!previous || JSON.stringify(previous.value) !== JSON.stringify(tool.value)) {
-      state.tools.set(key, { kind: tool.kind, value: tool.value });
-    }
+    upsertTool(state, tool.kind, tool.toolUseId, tool.value);
   });
 }
 
