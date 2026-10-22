@@ -557,7 +557,6 @@ export default function decorate(block) {
     const prompts = {
       loading: 'Loading chat...',
       'signing-in': 'Opening secure sign-in...',
-      error: 'Chat setup needs attention',
     };
     launcherPrompt.textContent = authenticated
       ? field.value.trim() || content.placeholder : prompts[state.status] || 'Log in to chat';

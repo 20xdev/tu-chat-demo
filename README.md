@@ -59,8 +59,9 @@ prompt use the same Cognito sign-in flow. After a successful callback, the heade
 shows **Log out** and the launcher opens chat. The chat dialog contains no login
 or logout buttons; its authentication status area is hidden while signed in.
 Logging out or losing the session clears the conversation, aborts active requests
-and restores the launcher login prompt. Setup/sign-in failures remain visible and
-can be retried from the header or, after closing the dialog, the launcher.
+and restores the launcher login prompt. The signed-out launcher keeps the
+**Log in to chat** label even when setup fails; errors remain visible separately
+and can be retried from the header or, after closing the dialog, the launcher.
 
 The published callback currently belongs to the `main` preview origin. Other
 branches, localhost and the live origin deliberately show an actionable
