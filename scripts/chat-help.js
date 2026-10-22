@@ -2,16 +2,18 @@ import { followUpOptions } from './chat-stream.js';
 
 export function parseHelpMedia(value) {
   const isQuestion = value?.status === 'question';
+  const isOutcome = value?.status === 'outcome';
+  const isDiagnostic = isQuestion || isOutcome;
   const steps = Array.isArray(value?.steps) ? value.steps : [];
   const validSteps = steps.filter((step) => typeof step === 'string' && step.trim());
   const warnings = [];
-  if (!isQuestion && value?.found !== true) warnings.push('Help media is unavailable for this request.');
-  if (!isQuestion && !validSteps.length) warnings.push('No valid written instructions were supplied.');
+  if (!isDiagnostic && value?.found !== true) warnings.push('Help media is unavailable for this request.');
+  if (!isDiagnostic && !validSteps.length) warnings.push('No valid written instructions were supplied.');
   else if (validSteps.length !== steps.length) warnings.push('Some invalid help steps were omitted.');
-  if (isQuestion && Object.hasOwn(value, 'steps') && !Array.isArray(value.steps)) {
+  if (isDiagnostic && Object.hasOwn(value, 'steps') && !Array.isArray(value.steps)) {
     warnings.push('The supplied help instructions are invalid.');
   }
-  if ((isQuestion ? Object.hasOwn(value, 'media') : value?.found === true)
+  if ((isDiagnostic ? Object.hasOwn(value, 'media') : value?.found === true)
     && !Array.isArray(value.media)) {
     warnings.push('No media references were supplied.');
   }
@@ -55,9 +57,34 @@ export function parseHelpMedia(value) {
       }
     }
   }
-  const defaultTitle = isQuestion ? 'Tag health check' : 'Help instructions';
+  const outcome = typeof value?.outcome === 'string' ? value.outcome.trim() : '';
+  const advice = typeof value?.advice === 'string' ? value.advice.trim() : '';
+  let offer = null;
+  if (isOutcome) {
+    if (!outcome) warnings.push('No valid tag-check outcome was supplied.');
+    if (!advice) warnings.push('No valid tag-check advice was supplied.');
+    if (Object.hasOwn(value, 'offer')) {
+      const supplied = value.offer;
+      if (!supplied || typeof supplied !== 'object' || Array.isArray(supplied)) {
+        warnings.push('The supplied offer is invalid.');
+      } else {
+        offer = {};
+        ['action', 'item', 'prompt'].forEach((key) => {
+          offer[key] = typeof supplied[key] === 'string' ? supplied[key].trim() : '';
+        });
+        if (Object.values(offer).some((field) => !field)) {
+          warnings.push('Some offer details are incomplete or invalid.');
+        }
+      }
+    }
+  }
+  const defaultTitle = isDiagnostic ? 'Tag health check' : 'Help instructions';
   return {
     isQuestion,
+    isOutcome,
+    outcome,
+    advice,
+    offer,
     question,
     options,
     accountFields,

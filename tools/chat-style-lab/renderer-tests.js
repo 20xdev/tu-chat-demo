@@ -144,6 +144,17 @@ const bundledHelp = {
     sampleHelp.media[2],
   ],
 };
+const sampleOutcome = {
+  status: 'outcome',
+  outcome: 'no_holder',
+  advice: 'Demo advice: use the holder in the illustrated position.',
+  offer: {
+    action: 'order_replacement_tag',
+    item: 'holder',
+    prompt: 'Would you like a demo tag holder?',
+  },
+  media: bundledHelp.media.filter((entry) => entry.src?.includes('position')),
+};
 const sampleQuestion = {
   status: 'question',
   step: 'beeping',
@@ -923,6 +934,47 @@ const cases = [
     );
     safe.view.dispose();
   }],
+  ['Help outcomes render advice, offer and illustrations without instruction warnings', () => {
+    const parsed = parseHelpMedia(sampleOutcome);
+    assert(parsed.isOutcome && !parsed.warnings.length, 'Valid outcome produced false warnings');
+    const { host, view } = helpViews(sampleOutcome, new URL('../../help/tags/', import.meta.url).href);
+    assert(
+      host.querySelector('.chat-help-advice').textContent === sampleOutcome.advice
+      && host.querySelector('.chat-help-question-text').textContent === sampleOutcome.offer.prompt
+      && host.querySelector('.chat-help-offer-item').textContent.includes('holder')
+      && host.querySelectorAll('img').length === 2
+      && !host.querySelector('.chat-tool-fallback,button,ol'),
+      'Outcome lost data, hid illustrations, warned or fabricated an action button',
+    );
+    view.dispose();
+    const { media, offer, ...textOnly } = sampleOutcome;
+    assert(!parseHelpMedia(textOnly).warnings.length, 'Outcome required optional media or offer');
+    assert(!parseHelpMedia({ ...textOnly, media: [] }).warnings.length, 'Empty outcome media warned');
+  }],
+  ['Malformed outcome fields warn and remain plain text without enabling actions', () => {
+    const parsed = parseHelpMedia({
+      status: 'outcome', outcome: null, advice: 7, offer: { item: 'holder' }, media: null,
+    });
+    assert(
+      parsed.warnings.length === 4 && parsed.offer.item === 'holder',
+      'Invalid outcome fields were silently accepted or usable offer data lost',
+    );
+    const unsafe = '<img src=x onerror=alert(1)>';
+    const { host, view } = helpViews({
+      ...sampleOutcome,
+      outcome: unsafe,
+      advice: unsafe,
+      offer: { action: unsafe, item: unsafe, prompt: unsafe },
+      media: [],
+    });
+    assert(
+      !host.querySelector('img,a,button')
+      && host.querySelector('.chat-help-advice').textContent === unsafe
+      && host.querySelector('.chat-help-question-text').textContent === unsafe,
+      'Outcome interpreted plain text as markup or executed an offer',
+    );
+    view.dispose();
+  }],
   ['Only boolean found:true enables help media; valid instructions remain', () => {
     [false, 'false', 'true', undefined, null, 1].forEach((found) => {
       const { host, view } = helpViews({ ...sampleHelp, found }, helpBase);
@@ -1378,6 +1430,20 @@ const cases = [
             { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
           ];
         }
+        if (mode === 'help-outcome') {
+          const outcomeEvent = {
+            type: 'CUSTOM', name: 'helpMedia', value: { ...sampleOutcome, toolCallId: 'aws-outcome' },
+          };
+          events = [
+            { type: 'TOOL_CALL_START', toolCallId: 'aws-outcome', toolCallName: 'tag_health_check' },
+            outcomeEvent,
+            outcomeEvent,
+            { type: 'TOOL_CALL_END', toolCallId: 'aws-outcome' },
+            { type: 'TEXT_MESSAGE_CONTENT', messageId: 'a', delta: 'Your fictional tag-check result.' },
+            { type: 'CUSTOM', name: 'followUps', value: { toolCallId: 'outcome-followups', options: ['Yes, order it', 'No thanks'] } },
+            { type: 'RUN_FINISHED', threadId: request.threadId, runId: request.runId },
+          ];
+        }
         if (mode === 'rpc-error') events.push({ type: 'RUN_ERROR', message: 'Synthetic agent failure 401 is not an HTTP status' });
         if (['complete', 'auth-retry'].includes(mode)) events.push({ type: 'RUN_FINISHED' });
         if (mode === 'interrupted') {
@@ -1600,6 +1666,60 @@ const cases = [
       );
       doc.querySelector('.chat-reset').click();
       assert(!question.isConnected, 'Reset retained an obsolete question');
+      mode = 'help-outcome';
+      const requestsBeforeOutcome = requests.length;
+      await submit('Show my demo tag-check result');
+      const outcome = doc.querySelector('.chat-help-outcome');
+      assert(
+        outcome && doc.querySelectorAll('.chat-help-outcome').length === 1
+        && !doc.querySelector('.chat-tool-fallback,.chat-turn-status:not([hidden])')
+        && outcome.querySelector('.chat-help-advice').textContent === sampleOutcome.advice
+        && outcome.querySelector('.chat-help-question-text').textContent === sampleOutcome.offer.prompt
+        && requests.length === requestsBeforeOutcome + 1,
+        'Outcome lost data, duplicated, warned or automatically accepted an offer',
+      );
+      const outcomeImages = [...outcome.querySelectorAll('img')];
+      outcomeImages.forEach((image) => { image.loading = 'eager'; });
+      await waitFor(
+        () => outcomeImages.length === 2
+          && outcomeImages.every((image) => image.complete && image.naturalWidth > 0),
+        'both outcome positioning illustrations',
+      );
+      assert(
+        outcomeImages.every((image, index) => new URL(image.src).pathname
+          === sampleOutcome.media[index].src && image.alt === sampleOutcome.media[index].alt)
+        && [...outcome.querySelectorAll('figcaption')]
+          .every((caption, index) => caption.textContent === sampleOutcome.media[index].caption),
+        'Outcome illustration order, captions or alt text changed',
+      );
+      const outcomeWidth = frame.style.width;
+      [320, 375, 390].forEach((width) => {
+        frame.style.width = `${width}px`;
+        win.dispatchEvent(new win.Event('resize'));
+        assert(
+          outcome.scrollWidth <= outcome.clientWidth
+          && outcome.getBoundingClientRect().right <= win.innerWidth,
+          `Help outcome overflowed at ${width}px`,
+        );
+      });
+      frame.style.width = outcomeWidth;
+      win.dispatchEvent(new win.Event('resize'));
+      const outcomeRequest = requests.at(-1);
+      mode = 'complete';
+      doc.querySelectorAll('.chat-followup')[1].click();
+      await waitFor(() => doc.querySelector('.chat-messages')
+        .getAttribute('aria-busy') === 'false', 'outcome decline request');
+      assert(
+        requests.at(-1).request.messages[0].content === 'No thanks'
+        && requests.at(-1).request.threadId === outcomeRequest.request.threadId
+        && requests.at(-1).session === outcomeRequest.session && outcome.isConnected,
+        'Outcome decline lost text, conversation context or illustrations',
+      );
+      doc.querySelector('.chat-reset').click();
+      assert(
+        !outcome.isConnected && outcomeImages.every((image) => !image.hasAttribute('src')),
+        'Reset retained outcome assets',
+      );
       mode = 'trip-list';
       doc.querySelector('.chat-reset').click();
       await submit('Show my last ten trips');

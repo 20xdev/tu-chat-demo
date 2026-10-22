@@ -536,12 +536,25 @@ function helpView(value, host, assetBase, addOptions) {
       host.append(choices);
     }
   }
+  if (help.isOutcome) {
+    host.classList.add('chat-help-outcome');
+    if (help.outcome || help.advice) {
+      const result = element('div', 'chat-help-account');
+      if (help.outcome) result.append(element('h4', '', help.outcome.replaceAll('_', ' ')));
+      if (help.advice) result.append(element('p', 'chat-help-advice', help.advice));
+      host.append(result);
+    }
+    if (help.offer?.item) {
+      host.append(element('p', 'chat-help-offer-item', `Offered item: ${help.offer.item}`));
+    }
+    if (help.offer?.prompt) host.append(element('p', 'chat-help-question-text', help.offer.prompt));
+  }
   if (help.steps.length) {
     const steps = element('ol', 'chat-help-steps');
     help.steps.forEach((step) => steps.append(element('li', '', step)));
     host.append(steps);
   }
-  if ((help.found || help.isQuestion) && help.media.length) {
+  if ((help.found || help.isQuestion || help.isOutcome) && help.media.length) {
     const media = element('div', 'chat-help-media');
     help.media.forEach((entry) => {
       const figure = element('figure', 'chat-help-figure');

@@ -297,6 +297,14 @@ strings are not coerced to counts. Malformed question/options/account data
 still produces explicit warnings while usable content remains visible.
 `step` is backend workflow metadata, not a replacement question or instruction.
 
+The observed `status: "outcome"` variant shows its outcome label, advice and
+optional offer item/prompt, followed by any supplied illustrations in their
+original order. It also does not require `found` or `steps`, and absent/empty
+media is valid. Invalid outcome/advice/offer fields show explicit warnings
+without hiding usable content. The offer's `action` remains backend workflow
+metadata: rendering it never places an order or invokes an action. Supplied
+`followUps` provide the normal confirmation/decline choices through chat.
+
 Six installation illustrations are stored in [`help/tags/`](help/tags/), matching
 the root-relative `/help/tags/` paths supplied by the agent. With the project
 owner's confirmation of reuse authorisation, they were downloaded on 2026-10-21
