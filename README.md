@@ -301,7 +301,12 @@ streaming, interrupted/failed and media-unavailable results default to expanded.
 Images count as usable after loading; failed images keep their visible fallback
 and reopen automatically collapsed guidance if no other usable media remains.
 Validated video cards count as usable because their Play control and external
-link remain visible. Questions, account checks, outcome labels, offer prompts,
+link remain visible. For question responses, the account summary and supplied
+account fields use **Account-check details**, which can default to collapsed
+after successful completion with nonblank assistant text even without media.
+Without an answer or before successful completion, account details default to
+expanded. Any supplied supporting steps share that disclosure.
+Questions, outcome labels, offer prompts,
 answer buttons, follow-ups and all validation/load warnings stay outside the
 disclosure. An explicit user open/close choice overrides defaults and survives
 subsequent updates/replacement for the same tool ID; reset/retry/logout dispose

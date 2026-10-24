@@ -1055,10 +1055,40 @@ const cases = [
       !details.open && host.querySelectorAll('.chat-help-options button').length === 2
       && host.querySelector('.chat-help-account-fields')
       && host.querySelector('.chat-tool-fallback')
-      && !details.querySelector('.chat-help-options,.chat-help-account,.chat-tool-fallback'),
+      && details.querySelector('.chat-help-account')
+      && !details.querySelector('.chat-help-options,.chat-tool-fallback'),
       'Disclosure hid a question, account check, answer controls or warning',
     );
     view.dispose();
+  }],
+  ['Account-check details collapse without media only after successful completion and retain user choices', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const tools = new Map([['help:account', { kind: 'helpMedia', value: sampleQuestion }]]);
+    const original = JSON.stringify(sampleQuestion);
+    view.update(tools, { hasAnswer: true, completed: false });
+    const details = host.querySelector('details');
+    assert(details.open, 'Streaming account check collapsed');
+    view.update(tools, { hasAnswer: false, completed: true });
+    assert(details.open, 'Tool-only account check collapsed');
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(
+      !details.open && details.querySelector('strong').textContent === 'Account-check details'
+      && details.querySelectorAll('dd').length === 5
+      && details.querySelector('.chat-help-summary').textContent === sampleQuestion.account_check.summary
+      && !details.querySelector('.chat-help-question-text,button')
+      && host.querySelector('.chat-help-question-text').textContent === sampleQuestion.question,
+      'Account disclosure lost fields, required media or hid the active question',
+    );
+    details.querySelector('summary').click();
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(details.open, 'Account expansion was not preserved');
+    details.querySelector('summary').click();
+    view.update(tools, { hasAnswer: true, completed: false });
+    assert(!details.open, 'Manual close was not preserved');
+    assert(JSON.stringify(sampleQuestion) === original, 'Account data mutated');
+    view.dispose();
+    assert(!host.hasChildNodes(), 'Account disclosure survived disposal');
   }],
   ['Help outcomes render advice, offer and illustrations without instruction warnings', () => {
     const parsed = parseHelpMedia(sampleOutcome);
@@ -1879,6 +1909,14 @@ const cases = [
         'Text-only help question showed false warnings, lost fields or duplicated',
       );
       const questionWidth = frame.style.width;
+      const accountDetails = question.querySelector('details');
+      assert(
+        !accountDetails.open && accountDetails.querySelectorAll('dd').length === 5
+        && !accountDetails.querySelector('button,.chat-help-question-text'),
+        'Completed question did not separate collapsed account details from answer controls',
+      );
+      accountDetails.querySelector('summary').click();
+      assert(accountDetails.open, 'Account details could not be expanded');
       [320, 375, 390].forEach((width) => {
         frame.style.width = `${width}px`;
         win.dispatchEvent(new win.Event('resize'));

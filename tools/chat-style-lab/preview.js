@@ -35,6 +35,7 @@ const questions = {
   'agui-route': 'Show a route and follow-up buttons from AWS AG-UI events.',
   'agui-statement': 'Show a fictional statement card and follow-up buttons from AWS AG-UI events.',
   'agui-help-holder': 'My demo tag does not have a holder.',
+  'agui-help-question': 'Check my demo tag.',
   'agui-help-video': 'Explain what the demo tag beeps mean.',
   'agui-help-install': 'How do I install my demo tag?',
   help: 'Show me how to install a Linkt tag on my windscreen. Include installation pictures or illustrated steps if available.',

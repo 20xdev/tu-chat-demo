@@ -512,11 +512,13 @@ function helpView(value, host, assetBase, addOptions, guidanceState) {
   let context = {};
   let usableMedia = 0;
   let disposed = false;
+  const hasAccount = help.isQuestion && (help.accountFields.length > 0 || !!help.accountSummary);
   function updateContext(next = context) {
     context = next;
     if (!guidance || disposed) return;
     const open = guidanceState.choice
-      ?? !(context.hasAnswer === true && context.completed === true && usableMedia > 0);
+      ?? !(context.hasAnswer === true && context.completed === true
+        && (hasAccount || usableMedia > 0));
     if (guidance.open !== open) guidance.open = open;
   }
   host.classList.add('chat-help');
@@ -537,7 +539,7 @@ function helpView(value, host, assetBase, addOptions, guidanceState) {
         });
         account.append(fields);
       }
-      host.append(account);
+      guidanceContent.append(account);
     }
     if (help.question) host.append(element('p', 'chat-help-question-text', help.question));
     if (help.options.length) {
@@ -667,11 +669,19 @@ function helpView(value, host, assetBase, addOptions, guidanceState) {
     guidance = element('details', 'chat-help-details');
     const summary = element('summary', 'chat-help-details-summary');
     const label = element('span', 'chat-help-details-label');
+    let title = help.steps.length ? 'Instructions and guidance' : 'Tag-check guidance';
+    let hint = help.steps.length
+      ? `${help.steps.length} ${help.steps.length === 1 ? 'step' : 'steps'} and supporting information`
+      : 'Advice and supporting information';
+    if (hasAccount) {
+      title = 'Account-check details';
+      hint = help.steps.length
+        ? 'Account summary, tag details and instructions'
+        : 'Account summary and tag details';
+    }
     label.append(
-      element('strong', '', help.steps.length ? 'Instructions and guidance' : 'Tag-check guidance'),
-      element('span', 'chat-help-details-hint', help.steps.length
-        ? `${help.steps.length} ${help.steps.length === 1 ? 'step' : 'steps'} and supporting information`
-        : 'Advice and supporting information'),
+      element('strong', '', title),
+      element('span', 'chat-help-details-hint', hint),
     );
     summary.append(label);
     const toggle = (event) => {

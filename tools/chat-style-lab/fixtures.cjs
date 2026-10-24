@@ -231,13 +231,30 @@ function aguiHelpEvents(id, value, answer, options, toolCallName = 'tag_health_c
     ...(answer.match(/[\s\S]{1,65}/g) || []).map((delta) => ({
       type: 'TEXT_MESSAGE_CONTENT', messageId, delta,
     })),
-    { type: 'CUSTOM', name: 'followUps', value: { toolCallId: `${id}-followups`, options } },
+    ...(options.length ? [{
+      type: 'CUSTOM', name: 'followUps', value: { toolCallId: `${id}-followups`, options },
+    }] : []),
     { type: 'TEXT_MESSAGE_END', messageId },
     { type: 'RUN_FINISHED' },
   ];
 }
 
 exports.eventFixtures = {
+  'agui-help-question': aguiHelpEvents('demo-question', {
+    status: 'question',
+    step: 'beeping',
+    question: 'Is your tag beeping when you go through a toll point?',
+    options: ['Yes', 'No'],
+    media: [],
+    account_check: {
+      tag_number_ending: '9999',
+      status: 'Active',
+      last_known_plate: 'DEMO-01',
+      last_detected: '1 October 2026',
+      trips_matched_by_plate_since: 7,
+      summary: 'Your fictional tag ending 9999 is Active, but the last 7 demo trips were matched by plate.',
+    },
+  }, 'Your fictional tag ending 9999 is active, but your last 7 demo trips were matched by number plate.\n\nIs your tag beeping when you go through a toll point?', []),
   'agui-help-holder': aguiHelpEvents(
     'demo-holder',
     {
