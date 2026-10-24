@@ -292,6 +292,30 @@ Valid instructions remain readable for unsuccessful or malformed results.
 Titles, ordered steps, alt text, and captions are plain text. Illustrations are
 not assigned to steps: media ordering is preserved as supplied.
 
+Written help advice and ordered instructions use a styled, keyboard-accessible
+**Instructions and guidance** / **Tag-check guidance** disclosure after the media.
+This is progressive disclosure, not duplicate detection: no response text or
+structured fields are removed. Only a successfully completed turn with nonblank
+assistant text and usable media defaults to collapsed guidance. Tool-only,
+streaming, interrupted/failed and media-unavailable results default to expanded.
+Images count as usable after loading; failed images keep their visible fallback
+and reopen automatically collapsed guidance if no other usable media remains.
+Validated video cards count as usable because their Play control and external
+link remain visible. Questions, account checks, outcome labels, offer prompts,
+answer buttons, follow-ups and all validation/load warnings stay outside the
+disclosure. An explicit user open/close choice overrides defaults and survives
+subsequent updates/replacement for the same tool ID; reset/retry/logout dispose
+the old turn and its choice. Statements, trips and routes retain their existing
+presentation. No backend schema or transport changes are required.
+
+The local preview defaults to production CSS and **AWS help: holder advice +
+illustrations**. Its scenario selector also includes **beep advice + video** and
+**installation steps + media**. These local fixtures follow the supplied AWS SSE
+sequence (`TOOL_CALL_START`, `CUSTOM helpMedia`, tool end, streamed assistant text,
+`CUSTOM followUps`, text end, run finish), intentionally preserving overlapping
+narrative/card wording to demonstrate the guidance disclosure. IDs are synthetic,
+no customer account data is included, and displayed order offers never place orders.
+
 The observed `status: "question"` variant instead renders its `question` and
 validated `options` as accessible answer buttons through the normal chat send
 flow, retaining conversation/session context and busy/reset/disposal behavior.
@@ -374,6 +398,14 @@ The existing default-declined consent stub is unchanged; the explicit Play
 action controls loading for that card.
 
 ### Rollback
+
+The expandable help-guidance release starts from
+`3dafadd035eba3f724ab94fcc24423060c72ba7d`. To undo just this presentation
+change and its mock scenarios, revert the commit titled
+`Add progressive disclosure for help guidance and AWS-shaped demos`
+with `git revert <release-commit>`, then push the revert normally.
+Do not reset or force-push main. This restores expanded help content without
+changing the published EDS configuration or earlier media/response support.
 
 The pre-structured-response baseline is Git commit
 `db372e5156b8829f3d552bc21b95830b224d1b09`. A separate verified archive of the

@@ -957,6 +957,109 @@ const cases = [
     );
     safe.view.dispose();
   }],
+  ['Help guidance collapses only with completed answer and usable media, preserving every field', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const value = { ...sampleOutcome, steps: sampleHelp.steps, media: [sampleHelp.media[2]] };
+    const original = JSON.stringify(value);
+    const tools = new Map([['help:guidance', { kind: 'helpMedia', value }]]);
+    view.update(tools, { hasAnswer: true, completed: false });
+    const details = host.querySelector('.chat-help-details');
+    assert(details.open, 'Streaming help hid its guidance');
+    view.update(tools, { hasAnswer: false, completed: true });
+    assert(details.open, 'Tool-only help hid its only explanation');
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(
+      !details.open && host.querySelector('.chat-help-details') === details,
+      'Completed help failed to collapse or recreated its content',
+    );
+    assert(
+      details.querySelector('.chat-help-advice').textContent === sampleOutcome.advice
+      && details.querySelectorAll('ol li').length === sampleHelp.steps.length
+      && !details.querySelector('.chat-help-media,.chat-help-offer-item,.chat-help-question-text,.chat-tool-fallback')
+      && host.querySelector('.chat-help-video-play')
+      && host.querySelector('.chat-help-question-text').textContent === sampleOutcome.offer.prompt
+      && JSON.stringify(value) === original,
+      'Progressive disclosure lost/changed data or hid media and actions',
+    );
+    view.update(tools, { hasAnswer: true, completed: false });
+    assert(details.open, 'Unsuccessful/incomplete help hid guidance');
+    view.dispose();
+  }],
+  ['Manual guidance choices survive context changes and tool replacement without affecting other cards', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const value = { ...sampleOutcome, media: [sampleHelp.media[2]] };
+    let tools = new Map([['help:guidance', { kind: 'helpMedia', value }]]);
+    view.update(tools);
+    const details = host.querySelector('details');
+    const summary = details.querySelector('summary');
+    summary.click();
+    assert(!details.open, 'Summary did not close expanded guidance');
+    view.update(tools, { hasAnswer: false, completed: false });
+    assert(!details.open, 'Streaming update overrode manual close');
+    summary.click();
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(details.open, 'Completion overrode manual open');
+    tools = new Map([['help:guidance', {
+      kind: 'helpMedia', value: { ...value, advice: 'Updated fictional advice.' },
+    }]]);
+    view.update(tools, { hasAnswer: true, completed: true });
+    const replacement = host.querySelector('details');
+    assert(replacement !== details && replacement.open, 'Tool replacement lost explicit choice');
+    summary.click();
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(replacement.open, 'Disposed summary changed the replacement choice');
+    tools.set('help:other', { kind: 'helpMedia', value });
+    view.update(tools, { hasAnswer: true, completed: true });
+    assert(!host.querySelectorAll('details')[1].open, 'Choice leaked to a different tool ID');
+    const replacementSummary = replacement.querySelector('summary');
+    view.dispose();
+    replacementSummary.click();
+    assert(!host.hasChildNodes(), 'Disposal retained guidance content');
+  }],
+  ['Missing, invalid and failed media leave help guidance readable with warnings outside', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    const value = { ...sampleOutcome, media: [sampleOutcome.media[0]] };
+    const tools = new Map([['help:image', { kind: 'helpMedia', value }]]);
+    const completed = { hasAnswer: true, completed: true };
+    view.update(tools, completed);
+    const details = host.querySelector('details');
+    const image = host.querySelector('img');
+    assert(details.open, 'Pending image counted as usable media');
+    image.dispatchEvent(new Event('load'));
+    assert(!details.open, 'Loaded illustration did not enable progressive disclosure');
+    image.dispatchEvent(new Event('error'));
+    assert(details.open && host.querySelector('.chat-tool-fallback')
+      && !details.querySelector('.chat-tool-fallback'), 'Image failure hid guidance or its warning');
+    [[], [{ type: 'video', youtubeId: 'bad' }]].forEach((media) => {
+      view.update(new Map([['help:image', {
+        kind: 'helpMedia', value: { ...sampleOutcome, media },
+      }]]), completed);
+      assert(host.querySelector('details').open, 'Unavailable media collapsed guidance');
+    });
+    view.dispose();
+  }],
+  ['Question controls and malformed-data notices remain outside expandable guidance', () => {
+    const host = document.createElement('div');
+    const view = createToolViews(host, () => {});
+    view.update(new Map([['help:question', {
+      kind: 'helpMedia',
+      value: {
+        ...sampleQuestion, steps: ['Demo instruction.', null], media: [sampleHelp.media[2]],
+      },
+    }]]), { hasAnswer: true, completed: true });
+    const details = host.querySelector('details');
+    assert(
+      !details.open && host.querySelectorAll('.chat-help-options button').length === 2
+      && host.querySelector('.chat-help-account-fields')
+      && host.querySelector('.chat-tool-fallback')
+      && !details.querySelector('.chat-help-options,.chat-help-account,.chat-tool-fallback'),
+      'Disclosure hid a question, account check, answer controls or warning',
+    );
+    view.dispose();
+  }],
   ['Help outcomes render advice, offer and illustrations without instruction warnings', () => {
     const parsed = parseHelpMedia(sampleOutcome);
     assert(parsed.isOutcome && !parsed.warnings.length, 'Valid outcome produced false warnings');
@@ -1726,6 +1829,14 @@ const cases = [
         && !help.querySelector('iframe') && doc.querySelectorAll('.chat-followup').length === 3,
         'Help video or follow-ups were missing, or a player loaded before Play',
       );
+      const helpGuidance = help.querySelector('.chat-help-details');
+      assert(
+        !helpGuidance.open && !helpGuidance.querySelector('.chat-help-media')
+        && helpGuidance.querySelectorAll('ol li').length === bundledHelp.steps.length,
+        'Completed help did not separate visible media from collapsed instructions',
+      );
+      helpGuidance.querySelector('summary').click();
+      assert(helpGuidance.open, 'Help instructions could not be expanded');
       const helpWidth = frame.style.width;
       [320, 375, 390].forEach((width) => {
         frame.style.width = `${width}px`;
@@ -1735,7 +1846,9 @@ const cases = [
           && help.getBoundingClientRect().right <= win.innerWidth
           && help.querySelector('.chat-help-video-frame').getBoundingClientRect().height > 100
           && help.querySelector('.chat-help-video-play').getBoundingClientRect().width
-            >= help.querySelector('.chat-help-video-frame').clientWidth - 1,
+            >= help.querySelector('.chat-help-video-frame').clientWidth - 1
+          && helpGuidance.scrollWidth <= helpGuidance.clientWidth
+          && helpGuidance.querySelector('summary').getBoundingClientRect().height >= 44,
           `Help media overflowed at ${width}px`,
         );
       });
@@ -1749,7 +1862,8 @@ const cases = [
       assert(
         requests.at(-1).request.messages[0].content === 'Check my tag'
         && requests.at(-1).request.threadId === helpRequest.request.threadId
-        && requests.at(-1).session === helpRequest.session && help.isConnected,
+        && requests.at(-1).session === helpRequest.session && help.isConnected
+        && helpGuidance.open,
         'Help follow-up lost its text, context or illustrations',
       );
       doc.querySelector('.chat-reset').click();
@@ -1814,6 +1928,13 @@ const cases = [
         && [...outcome.querySelectorAll('figcaption')]
           .every((caption, index) => caption.textContent === sampleOutcome.media[index].caption),
         'Outcome illustration order, captions or alt text changed',
+      );
+      const outcomeGuidance = outcome.querySelector('.chat-help-details');
+      assert(
+        !outcomeGuidance.open
+        && !outcomeGuidance.querySelector('.chat-help-question-text,.chat-help-media')
+        && outcome.querySelector('.chat-help-question-text').getBoundingClientRect().height > 0,
+        'Outcome disclosure hid the offer or failed to collapse supporting advice',
       );
       const outcomeWidth = frame.style.width;
       [320, 375, 390].forEach((width) => {

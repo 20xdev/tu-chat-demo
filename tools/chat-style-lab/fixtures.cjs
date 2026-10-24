@@ -214,7 +214,84 @@ exports.statementCard = {
   notes: ['LOCAL DEMO: fictional statement data, not a customer account or payment request.'],
 };
 
+const positioningMedia = ['D', 'C'].map((tag) => ({
+  type: 'image',
+  src: `/help/tags/${tag}-type-tag-position-car.svg`,
+  alt: `${tag === 'D' ? 'Mini' : 'Small'} tag positioned behind the rear-view mirror`,
+  caption: tag === 'D' ? 'Mini tag: horizontal, behind the mirror' : 'Small tag: vertical, behind the mirror',
+}));
+
+function aguiHelpEvents(id, value, answer, options, toolCallName = 'tag_health_check') {
+  const messageId = `${id}-answer`;
+  return [
+    { type: 'TOOL_CALL_START', toolCallId: id, toolCallName },
+    { type: 'CUSTOM', name: 'helpMedia', value: { toolCallId: id, ...value } },
+    { type: 'TOOL_CALL_END', toolCallId: id },
+    { type: 'TEXT_MESSAGE_START', messageId, role: 'assistant' },
+    ...(answer.match(/[\s\S]{1,65}/g) || []).map((delta) => ({
+      type: 'TEXT_MESSAGE_CONTENT', messageId, delta,
+    })),
+    { type: 'CUSTOM', name: 'followUps', value: { toolCallId: `${id}-followups`, options } },
+    { type: 'TEXT_MESSAGE_END', messageId },
+    { type: 'RUN_FINISHED' },
+  ];
+}
+
 exports.eventFixtures = {
+  'agui-help-holder': aguiHelpEvents(
+    'demo-holder',
+    {
+      status: 'outcome',
+      outcome: 'no_holder',
+      advice: 'Without a holder the tag usually sits in the wrong spot to be read. It needs to be clipped into a windscreen holder, high and central behind the rear-view mirror.',
+      offer: {
+        action: 'order_replacement_tag',
+        item: 'holder',
+        prompt: 'Would you like me to send you a tag holder?',
+      },
+      media: positioningMedia,
+    },
+    'Without a holder, your tag sits in the wrong spot to be read. It needs to be clipped into a windscreen holder, positioned high and central behind the rear-view mirror.\n\nWould you like me to send you a tag holder?',
+    ['Yes, order it', 'No thanks'],
+  ),
+  'agui-help-video': aguiHelpEvents(
+    'demo-beeps',
+    {
+      status: 'outcome',
+      outcome: 'working',
+      advice: "A beep at a toll point means the tag was read there. 1 beep means you're good to go. 3 or 4 beeps is a warning about the account (low balance or suspended, depending on the tag style), and no beep means the tag wasn't read. Check the tag travels in its holder on every trip.",
+      offer: null,
+      media: [{ type: 'video', youtubeId: 'OvsDIBF1emE', title: 'What do the tag beeps mean?' }],
+    },
+    "Your tag is working when it beeps at a toll point: one beep means it was read, three or four beeps warn about your account, and no beep means it wasn't read.\n\nMake sure it travels in its holder on every journey.",
+    ['How do I install my tag?', 'Why was I charged video matching fees?', 'Explain a specific trip'],
+  ),
+  'agui-help-install': aguiHelpEvents(
+    'demo-install',
+    {
+      found: true,
+      topic: 'install',
+      title: 'Installing your tag',
+      steps: [
+        'Slide the tag into its holder until it clicks. Leave the backing on the adhesive for now.',
+        'Try the position before sticking: high and central behind the rear-view mirror, with at least 7cm clear of other objects. Mini tags sit horizontally, small tags vertically.',
+        'Clean the spot with a cloth and let it dry, peel off the backing, and press the holder firmly against the glass for 30 seconds.',
+        "Drive as normal. The tag beeps at each toll point, and your account detects it automatically - there's nothing to set up online.",
+      ],
+      media: [
+        ...['insert', 'position', 'angle'].flatMap((stage) => ['D', 'C'].map((tag) => ({
+          type: 'image',
+          src: `/help/tags/${tag}-type-tag-${stage}-car.svg`,
+          alt: `${tag === 'D' ? 'Mini' : 'Small'} tag: ${stage}`,
+          caption: `${tag === 'D' ? 'Mini' : 'Small'} tag: ${stage}`,
+        }))),
+        { type: 'video', youtubeId: '7sT7hg396EQ', title: 'How to install a tag in your vehicle' },
+      ],
+    },
+    "Here's how to install your tag:\n\n1. Slide the tag into its holder until it clicks (keep the backing on the adhesive).\n2. Try the position first: high and central behind the rear-view mirror, at least 7cm clear of other objects.\n3. Clean the spot, let it dry, peel the backing off and press the holder firmly for 30 seconds.\n4. Drive as normal - the tag beeps at tolls and your account detects it automatically.\n\nThe illustrations and video below show the position and angle for both mini and small tags.",
+    ['Check my tag', "Tag isn't beeping", 'Metallic windscreen'],
+    'tag_how_to',
+  ),
   'agui-statement': [
     { type: 'TOOL_CALL_START', toolCallId: 'demo-statement', toolCallName: 'get_statement_details' },
     { type: 'CUSTOM', name: 'statementCard', value: { ...exports.statementCard, toolCallId: 'demo-statement' } },

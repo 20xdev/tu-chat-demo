@@ -504,9 +504,21 @@ function tripListView(value, host) {
   }
 }
 
-function helpView(value, host, assetBase, addOptions) {
+function helpView(value, host, assetBase, addOptions, guidanceState) {
   const help = parseHelpMedia(value);
   const cleanups = [];
+  const guidanceContent = element('div', 'chat-help-details-content');
+  let guidance;
+  let context = {};
+  let usableMedia = 0;
+  let disposed = false;
+  function updateContext(next = context) {
+    context = next;
+    if (!guidance || disposed) return;
+    const open = guidanceState.choice
+      ?? !(context.hasAnswer === true && context.completed === true && usableMedia > 0);
+    if (guidance.open !== open) guidance.open = open;
+  }
   host.classList.add('chat-help');
   host.append(element('h3', '', help.title));
   help.warnings.forEach((warning) => host.append(element('p', 'chat-tool-fallback', warning)));
@@ -538,12 +550,8 @@ function helpView(value, host, assetBase, addOptions) {
   }
   if (help.isOutcome) {
     host.classList.add('chat-help-outcome');
-    if (help.outcome || help.advice) {
-      const result = element('div', 'chat-help-account');
-      if (help.outcome) result.append(element('h4', '', help.outcome.replaceAll('_', ' ')));
-      if (help.advice) result.append(element('p', 'chat-help-advice', help.advice));
-      host.append(result);
-    }
+    if (help.outcome) host.append(element('p', 'chat-help-outcome-label', `Result: ${help.outcome.replaceAll('_', ' ')}`));
+    if (help.advice) guidanceContent.append(element('p', 'chat-help-advice', help.advice));
     if (help.offer?.item) {
       host.append(element('p', 'chat-help-offer-item', `Offered item: ${help.offer.item}`));
     }
@@ -552,7 +560,7 @@ function helpView(value, host, assetBase, addOptions) {
   if (help.steps.length) {
     const steps = element('ol', 'chat-help-steps');
     help.steps.forEach((step) => steps.append(element('li', '', step)));
-    host.append(steps);
+    guidanceContent.append(steps);
   }
   if ((help.found || help.isQuestion || help.isOutcome) && help.media.length) {
     const media = element('div', 'chat-help-media');
@@ -576,12 +584,24 @@ function helpView(value, host, assetBase, addOptions) {
         image.referrerPolicy = 'no-referrer';
         image.width = 640;
         image.height = 360;
-        const unavailable = () => frame.replaceWith(element('p', 'chat-tool-fallback', `${image.alt}: Illustration could not be loaded.`));
+        let loaded = false;
+        const available = () => {
+          loaded = true;
+          usableMedia += 1;
+          updateContext();
+        };
+        const unavailable = () => {
+          if (loaded) usableMedia -= 1;
+          frame.replaceWith(element('p', 'chat-tool-fallback', `${image.alt}: Illustration could not be loaded.`));
+          updateContext();
+        };
+        image.addEventListener('load', available, { once: true });
         image.addEventListener('error', unavailable, { once: true });
         image.src = resolved.url;
         frame.append(image);
         figure.append(frame);
         cleanups.push(() => {
+          image.removeEventListener('load', available);
           image.removeEventListener('error', unavailable);
           image.removeAttribute('src');
         });
@@ -589,6 +609,7 @@ function helpView(value, host, assetBase, addOptions) {
         const title = typeof entry.title === 'string' && entry.title.trim()
           ? entry.title : 'Help video';
         const embedURL = `https://www.youtube-nocookie.com/embed/${entry.youtubeId}?autoplay=1`;
+        usableMedia += 1;
         figure.classList.add('chat-help-video');
         const frame = element('div', 'chat-help-video-frame');
         const play = element('button', 'chat-help-video-play');
@@ -642,7 +663,35 @@ function helpView(value, host, assetBase, addOptions) {
     });
     host.append(media);
   }
-  return () => cleanups.forEach((cleanup) => cleanup());
+  if (guidanceContent.hasChildNodes()) {
+    guidance = element('details', 'chat-help-details');
+    const summary = element('summary', 'chat-help-details-summary');
+    const label = element('span', 'chat-help-details-label');
+    label.append(
+      element('strong', '', help.steps.length ? 'Instructions and guidance' : 'Tag-check guidance'),
+      element('span', 'chat-help-details-hint', help.steps.length
+        ? `${help.steps.length} ${help.steps.length === 1 ? 'step' : 'steps'} and supporting information`
+        : 'Advice and supporting information'),
+    );
+    summary.append(label);
+    const toggle = (event) => {
+      event.preventDefault();
+      guidanceState.choice = !guidance.open;
+      updateContext();
+    };
+    summary.addEventListener('click', toggle);
+    cleanups.push(() => summary.removeEventListener('click', toggle));
+    guidance.append(summary, guidanceContent);
+    host.append(guidance);
+    updateContext();
+  }
+  return {
+    updateContext,
+    dispose() {
+      disposed = true;
+      cleanups.forEach((cleanup) => cleanup());
+    },
+  };
 }
 
 export default function createToolViews(
@@ -668,14 +717,19 @@ export default function createToolViews(
     return () => { active = false; };
   }
   return {
-    update(tools) {
+    update(tools, context = {}) {
       if (disposed) return;
       tools.forEach((tool, key) => {
-        if (views.get(key)?.tool === tool) return;
         const previous = views.get(key);
+        if (previous?.tool === tool) {
+          previous.updateContext(context);
+          return;
+        }
         previous?.dispose();
         const host = element('section', 'chat-tool');
         let dispose = () => {};
+        let updateContext = () => {};
+        let guidanceState;
         if (tool.kind === 'routePlan') dispose = routeView(tool.value, host);
         if (tool.kind === 'statementCard') statementView(tool.value, host);
         if (tool.kind === 'tripList') tripListView(tool.value, host);
@@ -690,7 +744,13 @@ export default function createToolViews(
               : 'The supplied trip details are invalid or not yet supported.',
           ));
         }
-        if (tool.kind === 'helpMedia') dispose = helpView(tool.value, host, helpAssetBase, addOptions);
+        if (tool.kind === 'helpMedia') {
+          guidanceState = previous?.guidanceState || {};
+          const help = helpView(tool.value, host, helpAssetBase, addOptions, guidanceState);
+          dispose = help.dispose;
+          updateContext = help.updateContext;
+          updateContext(context);
+        }
         if (tool.kind === 'followUps') {
           host.classList.add('chat-followups');
           host.setAttribute('aria-label', 'Suggested follow-up questions');
@@ -705,7 +765,9 @@ export default function createToolViews(
         host.querySelectorAll('button').forEach((button) => { button.disabled = busy; });
         if (previous) previous.host.replaceWith(host);
         else container.append(host);
-        views.set(key, { tool, host, dispose });
+        views.set(key, {
+          tool, host, dispose, updateContext, guidanceState,
+        });
       });
       container.hidden = !views.size;
     },

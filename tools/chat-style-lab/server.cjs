@@ -82,7 +82,7 @@ async function mockResponse(req, res, agui = false) {
     })),
     { result: { kind: 'status-update', status: { state: 'completed' }, final: true } },
   ];
-  if (agui && ['agui-route', 'agui-statement'].includes(scenario)) {
+  if (agui && scenario.startsWith('agui-') && Object.hasOwn(eventFixtures, scenario)) {
     events = eventFixtures[scenario].map((event) => (event.type === 'RUN_FINISHED'
       ? { ...event, threadId: data.threadId, runId: data.runId } : event));
   } else if (agui) {

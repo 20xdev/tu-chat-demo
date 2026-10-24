@@ -314,7 +314,10 @@ export default function decorate(block) {
       decorateResponse(turn.answer);
       turn.renderedVersion = turn.state.answerVersion;
     }
-    turn.tools.update(turn.state.tools);
+    turn.tools.update(turn.state.tools, {
+      hasAnswer: [...turn.state.messages.values()].some((text) => text.trim()),
+      completed: turn.state.closed && turn.state.outcome === 'completed',
+    });
     updateNotice(turn);
     if (turn.hasResponse) {
       turn.indicator.remove();
